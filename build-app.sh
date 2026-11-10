@@ -10,8 +10,9 @@ staging="$(mktemp -d "$destination/.notchbeat-build.XXXXXX")"
 trap 'rm -rf "$staging"' EXIT
 bundle="$staging/NotchBeat.app"
 
-mkdir -p "$bundle/Contents/MacOS"
+mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
 cp "$project/Info.plist" "$bundle/Contents/Info.plist"
+cp "$project/Resources/AppIcon.icns" "$bundle/Contents/Resources/AppIcon.icns"
 xcrun swiftc -swift-version 5 -O -parse-as-library \
     -target "$(uname -m)-apple-macosx14.2" \
     -sdk "$(xcrun --sdk macosx --show-sdk-path)" \
