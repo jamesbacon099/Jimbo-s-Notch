@@ -13,14 +13,20 @@ final class AudioFrames: ObservableObject {
 final class AudioMonitor: ObservableObject {
     let frames = AudioFrames()
     private let ignoresOutputVolume: Bool
+    private let allowsFrequencyFocus: Bool
 
-    init(ignoresOutputVolume: Bool = false) {
+    init(ignoresOutputVolume: Bool = false, allowsFrequencyFocus: Bool = true) {
         self.ignoresOutputVolume = ignoresOutputVolume
+        self.allowsFrequencyFocus = allowsFrequencyFocus
     }
     @Published private(set) var status = "Stopped"
     @Published private(set) var running = false
     @Published private(set) var source = AudioSource.system
     @Published var sensitivity: Double = 2.4
+    @Published var frequencyFocus = UserDefaults.standard.string(forKey: "frequencyFocus")
+        .flatMap(FrequencyFocus.init(rawValue:)) ?? .fullMix {
+        didSet { UserDefaults.standard.set(frequencyFocus.rawValue, forKey: "frequencyFocus") }
+    }
     enum PlaybackVolume: String, CaseIterable {
         case followOutput = "Follow Mac volume"
         case ignoreOutput = "Even when muted"
@@ -324,8 +330,12 @@ final class AudioMonitor: ObservableObject {
                 scale(&adjusted.left)
                 scale(&adjusted.right)
             }
+            if adjusted.level > 0.001 { lastAudible = now }
+            if allowsFrequencyFocus {
+                frequencyFocus.apply(to: &adjusted.left)
+                frequencyFocus.apply(to: &adjusted.right)
+            }
             input = adjusted
-            if input.level > 0.001 { lastAudible = now }
         } else {
             input = AudioFrame(mode: channelMode)
         }

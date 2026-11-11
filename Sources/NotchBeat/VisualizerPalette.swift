@@ -7,6 +7,7 @@ struct TrailPalette {
     let highlight: Color
     var coverGradient: Gradient? = nil
     var sparkleHighlight: Color = .white
+    var rainbowHue: Double?
 
     var colors: [Color] { [primary, secondary, highlight] }
 
@@ -113,7 +114,8 @@ final class VisualizerSettings: ObservableObject {
     @Published var effectMotion: EffectMotion {
         didSet {
             defaults.set(["speed": effectMotion.speed, "density": effectMotion.density,
-                          "reversed": effectMotion.reversed], forKey: effectPrefix + "motion")
+                          "reversed": effectMotion.reversed, "waveDepth": effectMotion.waveDepth,
+                          "silkDetail": effectMotion.silkDetail], forKey: effectPrefix + "motion")
         }
     }
 
@@ -121,7 +123,9 @@ final class VisualizerSettings: ObservableObject {
         let values = defaults.dictionary(forKey: "visualizer." + style.rawValue + ".motion") ?? [:]
         return EffectMotion(speed: min(2.5, max(0.25, values["speed"] as? Double ?? 1)),
                             density: min(2.5, max(0.6, values["density"] as? Double ?? 1)),
-                            reversed: values["reversed"] as? Bool ?? false)
+                            reversed: values["reversed"] as? Bool ?? false,
+                            waveDepth: min(1.6, max(0.35, values["waveDepth"] as? Double ?? 1)),
+                            silkDetail: min(1.5, max(0, values["silkDetail"] as? Double ?? 0.8)))
     }
 
     @Published var plasmaSparks: PlasmaSparks {
@@ -225,6 +229,7 @@ final class VisualizerSettings: ObservableObject {
                 case "Inferno": return .splash
                 case "Aurora", "Lightning": return .arcade
                 case "Orbit": return .pulse
+                case "Prism Fans", "Ink Bloom": return .electricMesh
                 case "Shatter": return .circuit
                 case "Embers", "Jellyfish": return .cityLights
                 default: return VisualizerStyle(rawValue: saved)
@@ -344,6 +349,12 @@ final class VisualizerSettings: ObservableObject {
     }
 
     func palette(for frame: AudioFrame) -> TrailPalette {
+        if selectedStyle == .electricMesh && selectedPalette == .automatic {
+            let hue = frame.musicHue ?? 0.48
+            var palette = TrailPalette(hue: hue)
+            palette.rainbowHue = hue
+            return palette
+        }
         if selectedPalette == .automatic || (selectedPalette == .albumArt && artworkColors == nil),
            let hue = frame.musicHue {
             return TrailPalette(hue: hue)

@@ -32,8 +32,8 @@ private final class Studio: ObservableObject {
         monitorColors = MonitorColors()
 
         audio = AudioMonitor()
-        musicAudio = AudioMonitor(ignoresOutputVolume: true)
-        systemMonitor = AudioMonitor(ignoresOutputVolume: true)
+        musicAudio = AudioMonitor(ignoresOutputVolume: true, allowsFrequencyFocus: false)
+        systemMonitor = AudioMonitor(ignoresOutputVolume: true, allowsFrequencyFocus: false)
         island = MusicIsland()
         spectrum = MusicSpectrum(input: musicAudio.frames, player: island.model)
         overlay = NotchOverlayController(audio: audio, usesIntegratedPlayer: true,
@@ -241,11 +241,13 @@ private struct StudioControls: View {
             .labelsHidden()
             .padding(.horizontal, 16)
             .padding(.top, 14)
-            if tab == "Music" {
-                StudioMusicControls(model: studio.island.model, settings: studio.overlay.settings,
-                                    colors: studio.monitorColors, frames: studio.monitorFrames)
-            } else {
-                NotchBeatControls(audio: studio.audio, overlay: studio.overlay, settings: studio.overlay.settings)
+            ScreenBoundSettings {
+                if tab == "Music" {
+                    StudioMusicControls(model: studio.island.model, settings: studio.overlay.settings,
+                                        colors: studio.monitorColors, frames: studio.monitorFrames)
+                } else {
+                    NotchBeatControls(audio: studio.audio, overlay: studio.overlay, settings: studio.overlay.settings)
+                }
             }
         }
         .frame(width: 400)

@@ -7,6 +7,16 @@ enum RelaxedDance: String, CaseIterable {
     case headbang = "Tweakers"
     case raveHeadbang = "Rave headbang"
     case slowdance = "Slowdancing"
+    case random = "Random"
+
+    private static let shuffledRoutines = allCases.filter { $0 != .random }.shuffled()
+
+    func routine(for index: Int, side: TrailSide) -> Self {
+        guard self == .random else { return self }
+        // Alternate sides so the first pair already gets two different styles.
+        let slot = index * 2 + (side == .right ? 1 : 0)
+        return Self.shuffledRoutines[slot % Self.shuffledRoutines.count]
+    }
 }
 
 struct PlasmaSparks {
@@ -18,10 +28,14 @@ struct EffectMotion {
     var speed = 1.0
     var density = 1.0
     var reversed = false
+    var waveDepth = 1.0
+    var silkDetail = 0.8
 }
 
 enum VisualizerStyle: String, CaseIterable, Identifiable {
     case classic = "Default"
+    case silk = "Silk Ribbons"
+    case electricMesh = "Electric Mesh"
     case dancers = "Dancers"
     case fire = "Fire"
     case splash = "Splash"
@@ -45,12 +59,22 @@ enum VisualizerStyle: String, CaseIterable, Identifiable {
     }
 
     var hasSpeed: Bool {
-        hasDensityAndDirection || [.fire, .splash, .pulse, .laser, .rainfall, .ripple].contains(self)
+        shapeControls != nil || hasDensityAndDirection || [.fire, .splash, .pulse, .laser, .rainfall, .ripple].contains(self)
+    }
+
+    var shapeControls: (spacing: String, depth: String)? {
+        switch self {
+        case .silk: return ("Twist spacing", "Ribbon spread")
+        case .electricMesh: return ("Mesh density", "Peak height")
+        default: return nil
+        }
     }
 
     var summary: String {
         switch self {
         case .classic: return "Flowing waveforms, ribbons, and sparkling trails."
+        case .silk: return "Translucent ribbons twist around a shared centerline."
+        case .electricMesh: return "A tilted wireframe spins around an electric burst, with peaks driven by the spectrum."
         case .dancers: return "Stickmen sway to softer music and break into bigger moves as the drums pick up."
         case .splash: return "Water jets and droplets splash with the beat."
         case .equalizer: return "Bars show the energy in each frequency band."
@@ -133,6 +157,13 @@ struct VisualizerTrail: View {
                     for index in 0..<count {
                         drawDancer(in: context, size: size, index: index, count: count)
                     }
+                } else if style.shapeControls != nil {
+                    let waveTime = time * effectMotion.speed + (mirrored || side == .left ? 0 : 1.1)
+                    switch style {
+                    case .silk: drawSilk(in: context, size: size, time: waveTime)
+                    case .electricMesh: drawElectricMesh(in: context, size: size, time: waveTime)
+                    default: break
+                    }
                 } else if style.hasDensityAndDirection {
                     let travel = effectMotion.reversed ? -phase : phase
                     drawMotionEffect(in: context, size: size, phase: travel)
@@ -152,7 +183,7 @@ struct VisualizerTrail: View {
         }
     }
 
-    private func x(_ progress: Double, size: CGSize) -> CGFloat {
+    func x(_ progress: Double, size: CGSize) -> CGFloat {
         let distance = innerInset + progress * max(0, size.width - innerInset - 4)
         return side == .left ? size.width - distance : distance
     }
@@ -163,8 +194,9 @@ struct VisualizerTrail: View {
         let stepBeat = beat + offset
         let phase = (stepBeat - floor(stepBeat)) * 2 * .pi
         let variation = time > 0 ? sin(beat * .pi / 4 + Double(index) * 1.7) : 0
-        let emote = relaxedDance == .standing
-        let slowdance = relaxedDance == .slowdance
+        let dance = relaxedDance.routine(for: index, side: side)
+        let emote = dance == .standing
+        let slowdance = dance == .slowdance
         let activity = time > 0 ? min(1, Double(channel.level) * 4 + channel.danceEnergy * 0.45) : 0
         let routine = index + (side == .right ? 5 : 0)
         let groove = time > 0 ? beat * 2 * .pi + Double(routine) * 0.72 : 0
@@ -173,13 +205,13 @@ struct VisualizerTrail: View {
         let slowStep = cos(slowPhase)
         let rock = sin(groove)
         let bounce = pow(sin(groove), 2)
-        let standing = relaxedDance == .idle
-        let classicRave = relaxedDance == .raveHeadbang
-        let headbang = (relaxedDance == .headbang || classicRave) && time > 0
+        let standing = dance == .idle
+        let classicRave = dance == .raveHeadbang
+        let headbang = (dance == .headbang || classicRave) && time > 0
         let energy = emote || slowdance ? 0
             : headbang ? (classicRave ? channel.danceEnergy * 0.16 : 0.10 + channel.danceEnergy * 0.27)
             : channel.danceEnergy
-        let martial: Double = relaxedDance == .martialArts ? 1 : 0
+        let martial: Double = dance == .martialArts ? 1 : 0
         func quietPose(_ standing: Double, _ guardPose: Double) -> Double {
             standing + (guardPose - standing) * martial
         }

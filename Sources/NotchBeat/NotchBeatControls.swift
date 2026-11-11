@@ -1,6 +1,45 @@
 import AppKit
 import SwiftUI
 
+private struct SettingsContentHeight: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+struct ScreenBoundSettings<Content: View>: View {
+    @State private var contentHeight: CGFloat = 0
+    @State private var screenLimit: CGFloat = 440
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        ScrollView(.vertical) {
+            content()
+                .background {
+                    GeometryReader { geometry in
+                        Color.clear.preference(key: SettingsContentHeight.self, value: geometry.size.height)
+                    }
+                }
+        }
+        .frame(height: contentHeight > 0 ? min(contentHeight, screenLimit) : screenLimit)
+        .onPreferenceChange(SettingsContentHeight.self) { height in
+            if height > 0 { contentHeight = height }
+        }
+        .onAppear(perform: updateScreenLimit)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
+            updateScreenLimit()
+        }
+    }
+
+    private func updateScreenLimit() {
+        let pointer = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { $0.frame.contains(pointer) } ?? NSScreen.main
+        // Reserve room for the menu bar, tabs, and the popover margin.
+        screenLimit = max(180, (screen?.visibleFrame.height ?? 600) - 100)
+    }
+}
+
 struct NotchBeatControls: View {
     @ObservedObject var audio: AudioMonitor
     @ObservedObject var overlay: NotchOverlayController
@@ -66,6 +105,14 @@ struct NotchBeatControls: View {
                 .pickerStyle(.menu)
                 if settings.selectedStyle.hasSpeed {
                     Slider(value: $settings.effectMotion.speed, in: 0.25...2.5) { Text("Speed") }
+                }
+                if let controls = settings.selectedStyle.shapeControls {
+                    Slider(value: $settings.effectMotion.density, in: 0.6...2.5) { Text(controls.spacing) }
+                    Slider(value: $settings.effectMotion.waveDepth, in: 0.35...1.6) { Text(controls.depth) }
+                }
+                if settings.selectedStyle == .silk {
+                    Slider(value: $settings.effectMotion.silkDetail, in: 0...1.5) { Text("Thread weave") }
+                        .help("Adds moving threads and folds. Move all the way left for the original ribbons.")
                 }
                 if settings.selectedStyle.hasDensityAndDirection {
                     Slider(value: $settings.effectMotion.density, in: 0.6...2.5) { Text("Density") }
@@ -203,6 +250,13 @@ struct NotchBeatControls: View {
                 .font(.caption)
                 .help("Choose whether the visualizer follows the Mac’s volume or responds to captured playback at any volume.")
             }
+            Picker("Frequency focus", selection: $audio.frequencyFocus) {
+                ForEach(FrequencyFocus.allCases, id: \.self) { focus in
+                    Text(focus.rawValue).tag(focus)
+                }
+            }
+            .font(.caption)
+            .help("Bass emphasizes low notes and kicks. Vocals emphasizes the midrange. The music-only Equalizer keeps its full spectrum.")
             HStack(spacing: 8) {
                 Text("Sensitivity")
                     .frame(width: 66, alignment: .leading)

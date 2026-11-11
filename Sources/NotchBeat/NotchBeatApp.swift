@@ -15,7 +15,9 @@ struct NotchBeatApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            NotchBeatControls(audio: audio, overlay: overlay, settings: overlay.settings)
+            ScreenBoundSettings {
+                NotchBeatControls(audio: audio, overlay: overlay, settings: overlay.settings)
+            }
         } label: {
             Image(nsImage: NotchBeatIcon.image)
                 .accessibilityLabel("Jimbo's Notch")
