@@ -97,6 +97,8 @@ final class AudioAnalysis {
     private var writeIndex = 0
     private var untilNextFrame = size
     private let impactDecay: Float
+    private var requestedLowPower = false
+    private var lowPower = false
     private var leftOnsets = OnsetDetector()
     private var rightOnsets = OnsetDetector()
     private let lock = NSLock()
@@ -149,7 +151,7 @@ final class AudioAnalysis {
             untilNextFrame -= 1
             if untilNextFrame == 0 {
                 finishFrame()
-                untilNextFrame = Self.hop
+                untilNextFrame = lowPower ? Self.size : Self.hop
             }
         }
     }
@@ -169,9 +171,16 @@ final class AudioAnalysis {
         lock.unlock()
     }
 
+    func setLowPower(_ enabled: Bool) {
+        lock.lock()
+        requestedLowPower = enabled
+        lock.unlock()
+    }
+
     private func finishFrame() {
         if lock.try() {
             let mode = requestedMode
+            lowPower = requestedLowPower
             lock.unlock()
             if captureMode != mode {
                 captureMode = mode
@@ -217,11 +226,12 @@ final class AudioAnalysis {
         }
 
         let now = ProcessInfo.processInfo.systemUptime
-        leftOnsets.apply(to: &frame.left, at: now, decay: impactDecay)
+        let decay = lowPower ? impactDecay * impactDecay : impactDecay
+        leftOnsets.apply(to: &frame.left, at: now, decay: decay)
         if mono {
             frame.right = frame.left
         } else {
-            rightOnsets.apply(to: &frame.right, at: now, decay: impactDecay)
+            rightOnsets.apply(to: &frame.right, at: now, decay: decay)
         }
         if lock.try() {
             if requestedMode == captureMode { latest = (frame, now) }

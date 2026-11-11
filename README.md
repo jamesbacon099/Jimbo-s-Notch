@@ -25,6 +25,8 @@ The release is ad hoc signed. macOS may ask for first-launch approval in Privacy
 4. Under **Waveform size**, choose **Auto Fit** or **Manual**. In Manual, use the sliders or enter exact lengths and heights in points.
 5. For wider trails in measured gaps, use **Menu item detection → Set Up…** and allow NotchBeat under **System Settings → Privacy & Security → Accessibility**. NotchBeat uses that access to read menu item positions. It does not move menu items or send input to other apps.
 
+**Match album cover** uses artwork from the macOS Music or Spotify app while a song plays. Allow Automation access if macOS asks. Auto Color takes over if artwork is unavailable. Spotify artwork is retrieved from its cover image URL.
+
 Auto color moves through the spectrum while music plays. The pace responds to loudness and tone, and strong beats move the hue farther. Stereo/Mono changes the visualization only. The Spectrum strip sets a fixed hue. Both trails stay inside the menu bar at the same width, height, and vertical position. Auto Fit fills the smaller measured gap or uses a compact size when menu positions are unavailable. Manual can go beyond that compact size. It keeps the trails within the menu bar and clear of detected items. Both modes wait when the smaller known gap is too crowded. When a menu position is unavailable, Manual cannot reserve space for that item. The trails stay visible on hover and are click-through. On PROLED XDR MacBook Pros, NotchBeat reserves space around the compact system pill. It looks for changing onscreen window bounds and, with optional Accessibility access, checks for system island controls at the center of the menu bar. The trails move outward when those readings expose a wider frame. Some island states may expose only the compact geometry. NotchBeat does not capture screen pixels.
 
 Selecting an app filters the visualizer to audio Core Audio attributes to that app and its identifiable helpers. A browser selection applies to the entire browser. If the selected app closes, NotchBeat waits for it to reopen.
@@ -33,7 +35,9 @@ For the microphone fallback, select **Microphone** and grant microphone access w
 
 If system audio remains flat while a track is playing, look for NotchBeat in **System Settings → Privacy & Security → Screen & System Audio Recording**. Grant system audio access, then quit and reopen NotchBeat. Some protected playback and audio routed outside the macOS system mix may be unavailable to the tap.
 
-NotchBeat shares one 30 fps visual update loop while audio is active, slows updates while waiting for a signal, and stops checking the menu layout when the trails are inactive. The Core Audio tap leaves playback audible and processes samples in memory. NotchBeat does not save or transmit audio.
+Enable **Low CPU mode** under **Audio source** to use simpler trails at 15 fps, analyze half as many audio windows, and check menu-bar placement less often. Playback stays on the same audio tap when you toggle it.
+
+By default, NotchBeat shares one 30 fps visual update loop while audio is active, slows updates while waiting for a signal, and stops checking the menu layout when the trails are inactive. The Core Audio tap leaves playback audible and processes samples in memory. NotchBeat does not save or transmit audio.
 
 ## Build from source
 

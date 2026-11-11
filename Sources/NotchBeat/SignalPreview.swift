@@ -4,6 +4,7 @@ struct SignalPreview: View {
     let frame: AudioFrame
     let palette: TrailPalette
     var mode = ChannelMode.stereo
+    var lowPower = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var hasSignal: Bool { frame.isActive }
@@ -22,13 +23,13 @@ struct SignalPreview: View {
             let time = reduceMotion || !hasSignal ? 3.4 : frame.animationTime
             HStack(spacing: 5) {
                 ClassicTrail(channel: hasSignal ? frame.left : Self.previewLeft, time: time,
-                             palette: palette, side: .left, mirrored: mode == .mono)
+                             palette: palette, side: .left, mirrored: mode == .mono, lowPower: lowPower)
                 Capsule()
                     .fill(.black.opacity(0.68))
                     .overlay { Capsule().strokeBorder(.white.opacity(0.13), lineWidth: 1) }
                     .frame(width: 31, height: 12)
                 ClassicTrail(channel: hasSignal ? frame.right : mode == .mono ? Self.previewLeft : Self.previewRight,
-                             time: time, palette: palette, side: .right, mirrored: mode == .mono)
+                             time: time, palette: palette, side: .right, mirrored: mode == .mono, lowPower: lowPower)
             }
             .frame(height: 43)
             .accessibilityHidden(true)

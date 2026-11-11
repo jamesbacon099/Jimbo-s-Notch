@@ -37,6 +37,20 @@ final class NotchOverlayController: ObservableObject {
             self?.updateActivity()
         }.store(in: &subscriptions)
 
+        settings.$selectedPalette.removeDuplicates()
+            .combineLatest(audio.$running.removeDuplicates(), audio.$source.removeDuplicates())
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _, running, source in
+                self?.settings.updateArtwork(listening: running, source: source)
+            }.store(in: &subscriptions)
+
+        audio.$lowPower.dropFirst().receive(on: RunLoop.main).sink { [weak self] _ in
+            guard let self, self.hasSignal else { return }
+            self.timer?.invalidate()
+            self.timer = nil
+            self.updateActivity()
+        }.store(in: &subscriptions)
+
         NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didActivateApplicationNotification)
             .merge(with: NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.activeSpaceDidChangeNotification))
             .merge(with: NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification))
@@ -82,10 +96,11 @@ final class NotchOverlayController: ObservableObject {
     private func updateActivity() {
         if hasSignal {
             if timer == nil {
-                let timer = Timer(timeInterval: 0.12, repeats: true) { [weak self] _ in
+                let interval = audio.lowPower ? 0.33 : 0.12
+                let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
                     MainActor.assumeIsolated { self?.refresh() }
                 }
-                timer.tolerance = 0.012
+                timer.tolerance = interval * 0.10
                 RunLoop.main.add(timer, forMode: .common)
                 self.timer = timer
             }
@@ -142,9 +157,10 @@ final class NotchOverlayController: ObservableObject {
 
         let workspace = NSWorkspace.shared
         let now = ProcessInfo.processInfo.systemUptime
+        let readInterval = audio.lowPower ? 2.4 : 1.2
         if layoutAccess, !reading, now >= nextRead, let front = workspace.frontmostApplication {
             reading = true
-            nextRead = now + 1.2
+            nextRead = now + readInterval
             let systemApps = ["com.apple.controlcenter", "com.apple.systemuiserver", "com.apple.MenuBarAgent"]
             let pids = workspace.runningApplications.filter {
                 !$0.isTerminated && ($0.activationPolicy != .prohibited || systemApps.contains($0.bundleIdentifier ?? ""))
@@ -163,7 +179,7 @@ final class NotchOverlayController: ObservableObject {
             }
         }
 
-        let recent = now - lastRead < 2.4 ? occupied : MenuBarOccupancy()
+        let recent = now - lastRead < readInterval * 2 ? occupied : MenuBarOccupancy()
         let window = IslandFootprint.current(in: space)
         let island = window.map { recent.island?.union($0) ?? $0 } ?? recent.island
         guard let pair = space.balancedLanes(occupied: recent, island: island, scale: screen.backingScaleFactor,
@@ -218,7 +234,7 @@ private struct TrailView: View {
     var body: some View {
         let channel = side == .left ? audio.frame.left : audio.frame.right
         ClassicTrail(channel: channel, time: reduceMotion ? 0 : audio.frame.animationTime,
-                     palette: settings.palette(for: audio.frame), side: side, mirrored: audio.frame.mode == .mono)
+                     palette: settings.palette(for: audio.frame), side: side, mirrored: audio.frame.mode == .mono, lowPower: audio.lowPower)
             .ignoresSafeArea()
             .allowsHitTesting(false)
             .accessibilityHidden(true)

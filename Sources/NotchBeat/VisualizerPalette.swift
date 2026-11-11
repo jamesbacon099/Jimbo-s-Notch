@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct TrailPalette {
@@ -22,6 +23,7 @@ struct TrailPalette {
 
 enum VisualizerPalette: String, CaseIterable, Identifiable {
     case automatic = "Auto"
+    case albumArt = "Album Art"
     case prism = "Prism"
     case tide = "Tide"
     case bloom = "Bloom"
@@ -37,7 +39,7 @@ enum VisualizerPalette: String, CaseIterable, Identifiable {
         switch self {
         case .blackAndWhite: return TrailPalette(.white, color(0x292929), color(0xBEBEBE))
         case .spectrum: return TrailPalette(hue: 0.5)
-        case .automatic: return TrailPalette(color(0xFFAD5A), color(0x53E9CB), color(0x9E7EFF))
+        case .automatic, .albumArt: return TrailPalette(color(0xFFAD5A), color(0x53E9CB), color(0x9E7EFF))
         case .prism: return TrailPalette(.cyan, color(0xA77AFF), color(0xFF63C6))
         case .tide: return TrailPalette(color(0x55FFD0), color(0x29A8FF), color(0x5770FF))
         case .bloom: return TrailPalette(color(0xFF87BA), color(0xAD81FF), color(0xFFBB90))
@@ -57,7 +59,7 @@ final class VisualizerSettings: ObservableObject {
     @Published var selectedPalette: VisualizerPalette {
         didSet {
             defaults.set(selectedPalette.rawValue, forKey: "selectedPalette")
-            if selectedPalette != .automatic {
+            if selectedPalette != .automatic && selectedPalette != .albumArt {
                 lastFixedPalette = selectedPalette
                 defaults.set(selectedPalette.rawValue, forKey: "lastFixedPalette")
             }
@@ -66,6 +68,8 @@ final class VisualizerSettings: ObservableObject {
 
     @Published private(set) var spectrumHue: Double
 
+    @Published private(set) var artworkColors: [UInt32]?
+    private var artworkTask: Task<Void, Never>?
     private let defaults: UserDefaults
     private var lastFixedPalette: VisualizerPalette
 
@@ -76,7 +80,7 @@ final class VisualizerSettings: ObservableObject {
         let selection = defaults.string(forKey: "selectedPalette").flatMap(VisualizerPalette.init(rawValue:)) ?? .automatic
         let savedFixed = defaults.string(forKey: "lastFixedPalette").flatMap(VisualizerPalette.init(rawValue:))
         selectedPalette = selection
-        lastFixedPalette = selection == .automatic ? savedFixed ?? .prism : selection
+        lastFixedPalette = [.automatic, .albumArt].contains(selection) ? savedFixed ?? .prism : selection
     }
 
     func setAutoColor(_ enabled: Bool) {
@@ -90,12 +94,56 @@ final class VisualizerSettings: ObservableObject {
         if persist { defaults.set(hue, forKey: "spectrumHue") }
     }
 
+    func updateArtwork(listening: Bool, source: AudioMonitor.AudioSource) {
+        artworkTask?.cancel()
+        artworkTask = nil
+        if artworkColors != nil { artworkColors = nil }
+        guard listening, selectedPalette == .albumArt else { return }
+
+        let players: [AlbumArtwork.Player]
+        switch source {
+        case .system: players = AlbumArtwork.Player.allCases
+        case .application(let app): players = AlbumArtwork.Player.allCases.filter { $0.rawValue == app.bundleID }
+        case .microphone: return
+        }
+        guard !players.isEmpty else { return }
+        artworkTask = Task { [weak self] in
+            var current: AlbumArtwork.Track?
+            while !Task.isCancelled {
+                var next: AlbumArtwork.Track?
+                for player in players where !NSRunningApplication.runningApplications(withBundleIdentifier: player.rawValue).isEmpty {
+                    next = await AlbumArtwork.read(player, previous: current)
+                    if next?.colors != nil || Task.isCancelled { break }
+                }
+                guard !Task.isCancelled, let self else { return }
+                current = next
+                if artworkColors != current?.colors { artworkColors = current?.colors }
+                try? await Task.sleep(for: .seconds(4))
+            }
+        }
+    }
+
     var basePalette: TrailPalette {
-        selectedPalette == .spectrum ? TrailPalette(hue: spectrumHue) : selectedPalette.colors
+        if selectedPalette == .albumArt, let artworkColors, let first = artworkColors.first {
+            func visible(_ key: UInt32, floor: Double) -> Color {
+                let r = Double(key >> 16)
+                let g = Double((key >> 8) & 255)
+                let b = Double(key & 255)
+                let gain = max(1, floor / max(1, max(r, g, b)))
+                return Color(red: min(1, (r + 12) * gain / 255),
+                             green: min(1, (g + 12) * gain / 255),
+                             blue: min(1, (b + 12) * gain / 255))
+            }
+            return TrailPalette(visible(first, floor: 170),
+                                visible(artworkColors.dropFirst().first ?? first, floor: 120),
+                                visible(artworkColors.dropFirst(2).first ?? first, floor: 225))
+        }
+        return selectedPalette == .spectrum ? TrailPalette(hue: spectrumHue) : selectedPalette.colors
     }
 
     func palette(for frame: AudioFrame) -> TrailPalette {
-        if selectedPalette == .automatic, let hue = frame.musicHue {
+        if selectedPalette == .automatic || (selectedPalette == .albumArt && artworkColors == nil),
+           let hue = frame.musicHue {
             return TrailPalette(hue: hue)
         }
         return basePalette

@@ -6,10 +6,11 @@ struct ClassicTrail: View {
     let palette: TrailPalette
     let side: TrailSide
     var mirrored = false
+    var lowPower = false
 
     var body: some View {
         Canvas { context, size in
-            ClassicVisualizer(channel: channel, time: time, palette: palette, side: side, mirrored: mirrored).draw(in: context, size: size)
+            ClassicVisualizer(channel: channel, time: time, palette: palette, side: side, mirrored: mirrored, lowPower: lowPower).draw(in: context, size: size)
         }
         .mask {
             LinearGradient(stops: [
@@ -28,6 +29,7 @@ private struct ClassicVisualizer {
     let palette: TrailPalette
     let side: TrailSide
     let mirrored: Bool
+    let lowPower: Bool
 
     private var tint: Color { palette.primary }
     private var level: Double { Double(channel.level) }
@@ -40,6 +42,10 @@ private struct ClassicVisualizer {
         guard channel.isActive else { return }
 
         drawWaveform(in: context, size: size)
+        if lowPower {
+            drawRibbon(in: context, size: size, strand: 0, color: tint)
+            return
+        }
         for (strand, color) in palette.colors.enumerated() {
             drawRibbon(in: context, size: size, strand: strand, color: color)
             drawComet(in: context, size: size, strand: strand, color: color)
@@ -80,8 +86,9 @@ private struct ClassicVisualizer {
 
     private func drawRibbon(in context: GraphicsContext, size: CGSize, strand: Int, color: Color) {
         var ribbon = Path()
-        for index in 0...40 {
-            let progress = Double(index) / 40
+        let segments = lowPower ? 20 : 40
+        for index in 0...segments {
+            let progress = Double(index) / Double(segments)
             let point = ribbonPoint(progress, strand: strand, size: size)
             if index == 0 { ribbon.move(to: point) } else { ribbon.addLine(to: point) }
         }

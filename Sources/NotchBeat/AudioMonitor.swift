@@ -10,6 +10,14 @@ final class AudioMonitor: ObservableObject {
     @Published private(set) var running = false
     @Published private(set) var source = AudioSource.system
     @Published var sensitivity: Double = 2.4
+    @Published var lowPower = UserDefaults.standard.bool(forKey: "lowPower") {
+        didSet {
+            guard lowPower != oldValue else { return }
+            UserDefaults.standard.set(lowPower, forKey: "lowPower")
+            analysis?.setLowPower(lowPower)
+            if timer != nil { startTimer(animated: animated) }
+        }
+    }
     @Published private(set) var channelMode =
         UserDefaults.standard.string(forKey: "channelMode").flatMap(ChannelMode.init(rawValue:)) ?? .stereo
 
@@ -88,6 +96,7 @@ final class AudioMonitor: ObservableObject {
         let tap = SystemAudioTap()
         let analyzer = try tap.start(processIDs: processIDs)
         analyzer.selectMode(channelMode)
+        analyzer.setLowPower(lowPower)
         analysis = analyzer
         systemTap = tap
     }
@@ -154,6 +163,7 @@ final class AudioMonitor: ObservableObject {
         }
         let analyzer = AudioAnalysis(sampleRate: format.sampleRate)
         analyzer.selectMode(channelMode)
+        analyzer.setLowPower(lowPower)
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
             analyzer.append(buffer.audioBufferList)
         }
@@ -207,11 +217,12 @@ final class AudioMonitor: ObservableObject {
     private func startTimer(animated: Bool = false) {
         timer?.invalidate()
         self.animated = animated
-        let interval = 1.0 / (animated ? 30 : 15)
+        let rate = lowPower ? (animated ? 15.0 : 8.0) : (animated ? 30.0 : 15.0)
+        let interval = 1.0 / rate
         let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.updateFrame() }
         }
-        timer.tolerance = animated ? 0.003 : 0.008
+        timer.tolerance = interval * 0.10
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
     }

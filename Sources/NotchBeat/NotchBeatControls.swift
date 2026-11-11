@@ -11,7 +11,7 @@ struct NotchBeatControls: View {
         VStack(alignment: .leading, spacing: 11) {
             header
             channelControl
-            SignalPreview(frame: audio.frame, palette: settings.palette(for: audio.frame), mode: audio.channelMode)
+            SignalPreview(frame: audio.frame, palette: settings.palette(for: audio.frame), mode: audio.channelMode, lowPower: audio.lowPower)
             audioControls
                 .modifier(ControlCard())
             PaletteChooser(settings: settings)
@@ -123,6 +123,11 @@ struct NotchBeatControls: View {
                     .frame(width: 44, alignment: .trailing)
             }
             .font(.caption)
+            Toggle("Low CPU mode", isOn: $audio.lowPower)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .font(.caption)
+                .help("Use simpler trails, fewer redraws, and less frequent audio analysis.")
         }
     }
 

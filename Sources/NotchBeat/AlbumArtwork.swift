@@ -1,0 +1,145 @@
+import CoreGraphics
+import Foundation
+import ImageIO
+
+enum AlbumArtwork {
+    enum Player: String, CaseIterable {
+        case music = "com.apple.Music"
+        case spotify = "com.spotify.client"
+    }
+
+    struct Track {
+        let player: Player
+        let id: String
+        let colors: [UInt32]?
+    }
+
+    static func read(_ player: Player, previous: Track?) async -> Track? {
+        let known = previous?.player == player && previous?.colors != nil ? previous?.id ?? "" : ""
+        let result = await Task.detached(priority: .utility) { query(player, known: known) }.value
+        guard let result, !Task.isCancelled else { return nil }
+        if result.id == known { return previous }
+        var data = result.data
+        if let url = result.url {
+            var request = URLRequest(url: url, timeoutInterval: 5)
+            request.cachePolicy = .returnCacheDataElseLoad
+            if let (cover, response) = try? await URLSession.shared.data(for: request),
+               (response as? HTTPURLResponse)?.statusCode == 200 {
+                data = cover
+            }
+        }
+        let artwork = data
+        let colors = await Task.detached(priority: .utility) { artwork.flatMap(palette) }.value
+        return Track(player: player, id: result.id, colors: colors)
+    }
+
+    private struct Result {
+        let id: String
+        var data: Data?
+        var url: URL?
+    }
+
+    private static func query(_ player: Player, known: String) -> Result? {
+        let artwork = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: artwork) }
+        let body: String
+        switch player {
+        case .music:
+            body = """
+            set trackID to persistent ID of current track
+            if trackID is item 1 of argv then return trackID
+            if (count of artworks of current track) is 0 then return trackID
+            set coverData to raw data of artwork 1 of current track
+            """
+        case .spotify:
+            body = """
+            set trackID to id of current track
+            if trackID is item 1 of argv then return trackID
+            return trackID & linefeed & (artwork url of current track)
+            """
+        }
+        let finish = player == .music ? """
+        set outputFile to open for access (POSIX file (item 2 of argv)) with write permission
+        try
+            write coverData to outputFile
+        on error errorText number errorNumber
+            close access outputFile
+            error errorText number errorNumber
+        end try
+        close access outputFile
+        return trackID
+        """ : ""
+        let script = """
+        on run argv
+            if application id "\(player.rawValue)" is not running then return ""
+            with timeout of 4 seconds
+                tell application id "\(player.rawValue)"
+                    if player state is not playing then return ""
+                    \(body)
+                end tell
+            end timeout
+            \(finish)
+        end run
+        """
+
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", script, "--", known, artwork.path]
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        do { try process.run() } catch { return nil }
+        let bytes = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0,
+              let text = String(data: bytes, encoding: .utf8) else { return nil }
+        let lines = text.split(whereSeparator: \.isNewline)
+        guard let id = lines.first else { return nil }
+        var result = Result(id: String(id))
+        if player == .music {
+            result.data = try? Data(contentsOf: artwork)
+        } else if lines.count > 1, let url = URL(string: String(lines[1])),
+                  url.scheme == "https", url.host?.hasSuffix(".scdn.co") == true {
+            result.url = url
+        }
+        return result
+    }
+
+    static func palette(_ data: Data) -> [UInt32]? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceThumbnailMaxPixelSize: 40
+              ] as CFDictionary),
+              let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(data: nil, width: 40, height: 40, bitsPerComponent: 8, bytesPerRow: 160,
+                                      space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+              let pixels = context.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: 40, height: 40))
+
+        var counts: [UInt32: Int] = [:]
+        for offset in stride(from: 0, to: 6400, by: 4) where pixels[offset + 3] > 220 {
+            let r = UInt32(pixels[offset])
+            let g = UInt32(pixels[offset + 1])
+            let b = UInt32(pixels[offset + 2])
+            let peak = max(r, g, b)
+            guard peak > 30 else { continue }
+            let chroma = peak - min(r, g, b)
+            let key = (r & 0xE0) << 16 | (g & 0xE0) << 8 | (b & 0xE0)
+            counts[key, default: 0] += 1 + Int(chroma / 24)
+        }
+
+        var colors: [UInt32] = []
+        for key in counts.keys.sorted(by: { counts[$0] == counts[$1] ? $0 < $1 : counts[$0]! > counts[$1]! }) {
+            let r = Int(key >> 16)
+            let g = Int((key >> 8) & 255)
+            let b = Int(key & 255)
+            guard colors.allSatisfy({
+                abs(Int($0 >> 16) - r) + abs(Int(($0 >> 8) & 255) - g) + abs(Int($0 & 255) - b) >= 85
+            }) else { continue }
+            colors.append(key)
+            if colors.count == 3 { break }
+        }
+        return colors.isEmpty ? nil : colors
+    }
+}
