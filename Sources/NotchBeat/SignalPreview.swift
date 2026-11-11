@@ -1,5 +1,20 @@
 import SwiftUI
 
+struct LiveSignalPreview: View {
+    let frames: AudioFrames
+    @ObservedObject var settings: VisualizerSettings
+    let mode: ChannelMode
+    let lowPower: Bool
+    @State private var frame = AudioFrame()
+
+    var body: some View {
+        SignalPreview(frame: frame, palette: settings.palette(for: frame), mode: mode, lowPower: lowPower)
+            .onReceive(frames.$current.throttle(for: .milliseconds(50), scheduler: RunLoop.main, latest: true)) {
+                frame = $0
+            }
+    }
+}
+
 struct SignalPreview: View {
     let frame: AudioFrame
     let palette: TrailPalette

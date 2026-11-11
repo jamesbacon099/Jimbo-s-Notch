@@ -28,6 +28,7 @@ enum AlbumArtwork {
                 data = cover
             }
         }
+        guard !Task.isCancelled else { return nil }
         let artwork = data
         let colors = await Task.detached(priority: .utility) { artwork.flatMap(palette) }.value
         return Track(player: player, id: result.id, colors: colors)
@@ -98,9 +99,11 @@ enum AlbumArtwork {
         var result = Result(id: String(id))
         if player == .music {
             result.data = try? Data(contentsOf: artwork)
-        } else if lines.count > 1, let url = URL(string: String(lines[1])),
-                  url.scheme == "https", url.host?.hasSuffix(".scdn.co") == true {
-            result.url = url
+        } else if lines.count > 1, var url = URLComponents(string: String(lines[1])),
+                  url.scheme == "https" || url.scheme == "http",
+                  url.host?.hasSuffix(".scdn.co") == true {
+            url.scheme = "https"
+            result.url = url.url
         }
         return result
     }
@@ -117,27 +120,48 @@ enum AlbumArtwork {
               let pixels = context.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
         context.draw(image, in: CGRect(x: 0, y: 0, width: 40, height: 40))
 
-        var counts: [UInt32: Int] = [:]
+        struct Bucket {
+            var count = 0
+            var red = 0
+            var green = 0
+            var blue = 0
+
+            var color: UInt32 {
+                UInt32(red / count) << 16 | UInt32(green / count) << 8 | UInt32(blue / count)
+            }
+        }
+
+        var buckets: [Int: Bucket] = [:]
+        var pixelCount = 0
         for offset in stride(from: 0, to: 6400, by: 4) where pixels[offset + 3] > 220 {
-            let r = UInt32(pixels[offset])
-            let g = UInt32(pixels[offset + 1])
-            let b = UInt32(pixels[offset + 2])
-            let peak = max(r, g, b)
-            guard peak > 30 else { continue }
-            let chroma = peak - min(r, g, b)
+            let alpha = Int(pixels[offset + 3])
+            let r = Int(pixels[offset]) * 255 / alpha
+            let g = Int(pixels[offset + 1]) * 255 / alpha
+            let b = Int(pixels[offset + 2]) * 255 / alpha
             let key = (r & 0xE0) << 16 | (g & 0xE0) << 8 | (b & 0xE0)
-            counts[key, default: 0] += 1 + Int(chroma / 24)
+            var bucket = buckets[key, default: Bucket()]
+            bucket.count += 1
+            bucket.red += r
+            bucket.green += g
+            bucket.blue += b
+            buckets[key] = bucket
+            pixelCount += 1
         }
 
         var colors: [UInt32] = []
-        for key in counts.keys.sorted(by: { counts[$0] == counts[$1] ? $0 < $1 : counts[$0]! > counts[$1]! }) {
-            let r = Int(key >> 16)
-            let g = Int((key >> 8) & 255)
-            let b = Int(key & 255)
+        let ranked = buckets.values.sorted { left, right in
+            left.count == right.count ? left.color < right.color : left.count > right.count
+        }
+        for bucket in ranked {
+            if !colors.isEmpty && bucket.count * 100 < pixelCount * 3 { break }
+            let color = bucket.color
+            let r = Int(color >> 16)
+            let g = Int((color >> 8) & 255)
+            let b = Int(color & 255)
             guard colors.allSatisfy({
                 abs(Int($0 >> 16) - r) + abs(Int(($0 >> 8) & 255) - g) + abs(Int($0 & 255) - b) >= 85
             }) else { continue }
-            colors.append(key)
+            colors.append(color)
             if colors.count == 3 { break }
         }
         return colors.isEmpty ? nil : colors

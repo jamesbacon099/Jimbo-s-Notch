@@ -1,5 +1,4 @@
 import AppKit
-import ApplicationServices
 import CoreGraphics
 
 enum IslandFootprint {
@@ -21,7 +20,7 @@ enum IslandFootprint {
     }
 
     static func current(in space: MenuBarSpace) -> CGRect? {
-        guard space.leftArea.maxX < space.rightArea.minX,
+        guard space.hasNotch,
               let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
                 as? [[String: Any]] else { return nil }
 
@@ -34,68 +33,24 @@ enum IslandFootprint {
                   let x = bounds["X"], let y = bounds["Y"],
                   let width = bounds["Width"], let height = bounds["Height"] else { return nil }
             return Window(
-                frame: CGRect(x: x, y: space.axOriginY - y - height, width: width, height: height),
+                frame: CGRect(x: x, y: space.windowOriginY - y - height, width: width, height: height),
                 level: level
             )
         }
         return footprint(in: space, windows: candidates)
     }
 
-    static func accessible(in space: MenuBarSpace) -> CGRect? {
-        let system = AXUIElementCreateSystemWide()
-        AXUIElementSetMessagingTimeout(system, 0.05)
-        let midX = (space.leftArea.maxX + space.rightArea.minX) / 2
-        let y = space.axOriginY - space.leftArea.midY
-        var candidates: [Window] = []
-        // The camera itself may not hit-test. Try the two sides of the compact pill.
-        for x in [midX - 48, midX, midX + 48] {
-            var hit: AXUIElement?
-            guard AXUIElementCopyElementAtPosition(system, Float(x), Float(y), &hit) == .success,
-                  let hit else { continue }
-            var pid: pid_t = 0
-            guard AXUIElementGetPid(hit, &pid) == .success,
-                  let bundle = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier,
-                  bundle.hasPrefix("com.apple.") else { continue }
-
-            var element = hit
-            for _ in 0..<5 {
-                if let position = axValue(element, kAXPositionAttribute),
-                   let size = axValue(element, kAXSizeAttribute) {
-                    var origin = CGPoint.zero
-                    var dimensions = CGSize.zero
-                    if AXValueGetValue(position, .cgPoint, &origin), AXValueGetValue(size, .cgSize, &dimensions) {
-                        candidates.append(Window(
-                            frame: CGRect(x: origin.x, y: space.axOriginY - origin.y - dimensions.height,
-                                          width: dimensions.width, height: dimensions.height),
-                            level: Int(CGWindowLevelForKey(.statusWindow))
-                        ))
-                    }
-                }
-                var parent: CFTypeRef?
-                guard AXUIElementCopyAttributeValue(element, kAXParentAttribute as CFString, &parent) == .success,
-                      let parent, CFGetTypeID(parent) == AXUIElementGetTypeID() else { break }
-                element = (parent as! AXUIElement)
-            }
-        }
-        return footprint(in: space, windows: candidates)
-    }
-
-    private static func axValue(_ element: AXUIElement, _ attribute: String) -> AXValue? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
-              let value, CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
-        return (value as! AXValue)
-    }
-
     static func footprint(in space: MenuBarSpace, windows: [Window]) -> CGRect? {
         let leftEdge = space.leftArea.maxX
         let rightEdge = space.rightArea.minX
-        guard rightEdge > leftEdge else { return nil }
+        guard space.hasNotch else { return nil }
         let center = (leftEdge + rightEdge) / 2
         let barTop = space.leftArea.maxY
         let barBottom = space.leftArea.minY
         let fullWidth = space.rightArea.maxX - space.leftArea.minX
-        let minimumWidth = space.hasSystemIsland ? max(90, (rightEdge - leftEdge) * 0.65) : rightEdge - leftEdge - 8
+        let minimumWidth = space.hasSystemIsland
+            ? max(compactSystemWidth, rightEdge - leftEdge) * 0.65
+            : rightEdge - leftEdge - 8
 
         // A notch overlay sits at the top edge, straddles the camera, and takes up
         // only part of the screen. Ignore normal app windows and the full menu bar.

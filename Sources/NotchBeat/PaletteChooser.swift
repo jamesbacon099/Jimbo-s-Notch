@@ -32,6 +32,12 @@ struct PaletteChooser: View {
             .font(.caption)
             .help("Matches the cover in Music or Spotify. Uses Auto Color when no cover is available.")
 
+            if settings.selectedPalette == .albumArt {
+                Text(settings.artworkColors == nil ? "Using Auto Color until artwork is available." : "Using album cover colors.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             HStack(spacing: 7) {
                 ForEach(VisualizerPalette.allCases.filter { $0 != .spectrum && $0 != .automatic && $0 != .albumArt }) { palette in
                     swatch(palette)

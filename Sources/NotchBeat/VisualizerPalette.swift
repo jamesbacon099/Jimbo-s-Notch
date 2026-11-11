@@ -70,6 +70,7 @@ final class VisualizerSettings: ObservableObject {
 
     @Published private(set) var artworkColors: [UInt32]?
     private var artworkTask: Task<Void, Never>?
+    private var artworkPlayers: [AlbumArtwork.Player] = []
     private let defaults: UserDefaults
     private var lastFixedPalette: VisualizerPalette
 
@@ -95,19 +96,30 @@ final class VisualizerSettings: ObservableObject {
     }
 
     func updateArtwork(listening: Bool, source: AudioMonitor.AudioSource) {
-        artworkTask?.cancel()
-        artworkTask = nil
-        if artworkColors != nil { artworkColors = nil }
-        guard listening, selectedPalette == .albumArt else { return }
-
-        let players: [AlbumArtwork.Player]
-        switch source {
-        case .system: players = AlbumArtwork.Player.allCases
-        case .application(let app): players = AlbumArtwork.Player.allCases.filter { $0.rawValue == app.bundleID }
-        case .microphone: return
+        var players: [AlbumArtwork.Player] = []
+        if listening && selectedPalette == .albumArt {
+            switch source {
+            case .system: players = AlbumArtwork.Player.allCases
+            case .application(let app): players = AlbumArtwork.Player.allCases.filter { $0.rawValue == app.bundleID }
+            case .microphone: break
+            }
         }
-        guard !players.isEmpty else { return }
+        guard players != artworkPlayers else { return }
+        artworkPlayers = players
+        if artworkColors != nil { artworkColors = nil }
+        artworkTask?.cancel()
+        startArtworkPolling()
+    }
+
+    private func startArtworkPolling() {
+        guard artworkTask == nil, !artworkPlayers.isEmpty else { return }
+        let players = artworkPlayers
         artworkTask = Task { [weak self] in
+            defer {
+                // Wait for the current query to finish before starting another player poll.
+                self?.artworkTask = nil
+                self?.startArtworkPolling()
+            }
             var current: AlbumArtwork.Track?
             while !Task.isCancelled {
                 var next: AlbumArtwork.Track?
@@ -118,7 +130,7 @@ final class VisualizerSettings: ObservableObject {
                 guard !Task.isCancelled, let self else { return }
                 current = next
                 if artworkColors != current?.colors { artworkColors = current?.colors }
-                try? await Task.sleep(for: .seconds(4))
+                try? await Task.sleep(for: .seconds(3))
             }
         }
     }
@@ -129,10 +141,10 @@ final class VisualizerSettings: ObservableObject {
                 let r = Double(key >> 16)
                 let g = Double((key >> 8) & 255)
                 let b = Double(key & 255)
-                let gain = max(1, floor / max(1, max(r, g, b)))
-                return Color(red: min(1, (r + 12) * gain / 255),
-                             green: min(1, (g + 12) * gain / 255),
-                             blue: min(1, (b + 12) * gain / 255))
+                let peak = max(r, g, b)
+                guard peak > 0 else { return Color(white: floor / 255) }
+                let gain = max(1, floor / peak)
+                return Color(red: r * gain / 255, green: g * gain / 255, blue: b * gain / 255)
             }
             return TrailPalette(visible(first, floor: 170),
                                 visible(artworkColors.dropFirst().first ?? first, floor: 120),

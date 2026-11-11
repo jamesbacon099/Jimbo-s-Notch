@@ -7,10 +7,12 @@ struct ClassicTrail: View {
     let side: TrailSide
     var mirrored = false
     var lowPower = false
+    var innerInset: CGFloat = 4
 
     var body: some View {
-        Canvas { context, size in
-            ClassicVisualizer(channel: channel, time: time, palette: palette, side: side, mirrored: mirrored, lowPower: lowPower).draw(in: context, size: size)
+        Canvas(rendersAsynchronously: true) { context, size in
+            ClassicVisualizer(channel: channel, time: time, palette: palette, side: side,
+                              mirrored: mirrored, lowPower: lowPower, innerInset: innerInset).draw(in: context, size: size)
         }
         .mask {
             LinearGradient(stops: [
@@ -30,6 +32,7 @@ private struct ClassicVisualizer {
     let side: TrailSide
     let mirrored: Bool
     let lowPower: Bool
+    let innerInset: CGFloat
 
     private var tint: Color { palette.primary }
     private var level: Double { Double(channel.level) }
@@ -86,7 +89,7 @@ private struct ClassicVisualizer {
 
     private func drawRibbon(in context: GraphicsContext, size: CGSize, strand: Int, color: Color) {
         var ribbon = Path()
-        let segments = lowPower ? 20 : 40
+        let segments = lowPower ? 20 : 32
         for index in 0...segments {
             let progress = Double(index) / Double(segments)
             let point = ribbonPoint(progress, strand: strand, size: size)
@@ -113,9 +116,9 @@ private struct ClassicVisualizer {
         let brightness = sin(age * .pi) * min(1, 0.22 + level * 0.7 + hit * 0.52)
         let head = 0.11 + age * 0.78
         let scale = detailScale(size: size)
-        let tailSpacing = 0.018 + hit * 0.007
-        for tail in (0..<10).reversed() {
-            let fade = 1 - Double(tail) / 10
+        let tailSpacing = 0.027 + hit * 0.0105
+        for tail in (0..<7).reversed() {
+            let fade = 1 - Double(tail) / 7
             let progress = max(0, head - Double(tail) * tailSpacing)
             let point = ribbonPoint(progress, strand: strand, size: size)
             let radius = (1.2 + level * 1.0 + hit * 1.0) * fade * scale
@@ -171,7 +174,7 @@ private struct ClassicVisualizer {
     }
 
     private func x(_ progress: Double, width: CGFloat) -> CGFloat {
-        let distance = 4 + progress * (width - 8)
+        let distance = innerInset + progress * (width - innerInset - 4)
         return side == .left ? width - distance : distance
     }
 

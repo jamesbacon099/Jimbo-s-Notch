@@ -4,8 +4,13 @@ import CoreAudio
 import Foundation
 
 @MainActor
+final class AudioFrames: ObservableObject {
+    @Published fileprivate(set) var current = AudioFrame()
+}
+
+@MainActor
 final class AudioMonitor: ObservableObject {
-    @Published private(set) var frame = AudioFrame()
+    let frames = AudioFrames()
     @Published private(set) var status = "Stopped"
     @Published private(set) var running = false
     @Published private(set) var source = AudioSource.system
@@ -151,7 +156,7 @@ final class AudioMonitor: ObservableObject {
         systemTap = nil
         analysis = nil
         lastAudible = nil
-        if frame != AudioFrame() { frame = AudioFrame() }
+        if frames.current != AudioFrame() { frames.current = AudioFrame() }
     }
 
     private func startMicrophone() throws {
@@ -217,12 +222,12 @@ final class AudioMonitor: ObservableObject {
     private func startTimer(animated: Bool = false) {
         timer?.invalidate()
         self.animated = animated
-        let rate = lowPower ? (animated ? 15.0 : 8.0) : (animated ? 30.0 : 15.0)
+        let rate = lowPower ? (animated ? 30.0 : 8.0) : (animated ? 60.0 : 15.0)
         let interval = 1.0 / rate
         let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.updateFrame() }
         }
-        timer.tolerance = interval * 0.10
+        timer.tolerance = animated ? 0 : interval * 0.10
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
     }
@@ -259,13 +264,14 @@ final class AudioMonitor: ObservableObject {
             return next
         }
 
+        let frame = frames.current
         let previous = frame.mode == input.mode ? frame : AudioFrame(mode: input.mode)
         let left = smoothChannel(previous.left, input.left)
         let right = input.mode == .mono ? left : smoothChannel(previous.right, input.right)
         var next = AudioFrame(left: left, right: right, mode: input.mode)
         next.animationTime = next.isActive ? now : 0
         next.musicHue = colorMotion.update(with: next, elapsed: elapsed)
-        if frame != next { frame = next }
+        if frame != next { frames.current = next }
         if next.isActive != animated { startTimer(animated: next.isActive) }
 
         let label = source.audioLabel

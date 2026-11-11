@@ -11,7 +11,7 @@ struct NotchBeatControls: View {
         VStack(alignment: .leading, spacing: 11) {
             header
             channelControl
-            SignalPreview(frame: audio.frame, palette: settings.palette(for: audio.frame), mode: audio.channelMode, lowPower: audio.lowPower)
+            LiveSignalPreview(frames: audio.frames, settings: settings, mode: audio.channelMode, lowPower: audio.lowPower)
             audioControls
                 .modifier(ControlCard())
             PaletteChooser(settings: settings)
@@ -29,7 +29,6 @@ struct NotchBeatControls: View {
         }
         .onAppear {
             applications = AudioApplication.choices()
-            overlay.refreshLayoutAccess()
         }
         .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didLaunchApplicationNotification)) { _ in
             applications = AudioApplication.choices()
@@ -148,28 +147,21 @@ struct NotchBeatControls: View {
                 }
             }
 
-            Picker("Waveform size", selection: $overlay.sizing.mode) {
-                ForEach(TrailSizing.Mode.allCases, id: \.self) { mode in
-                    Text(mode.rawValue).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .accessibilityLabel("Waveform size")
+            sizeSlider("Length", value: $overlay.sizing.length, range: TrailSizing.lengthRange)
+            sizeSlider("Height", value: $overlay.sizing.height, range: TrailSizing.heightRange)
+            sizeSlider("Notch gap", value: $overlay.sizing.gap, range: TrailSizing.gapRange)
+                .help("Use a negative value to bring both trails closer to the island. The default is 15 points.")
 
-            if overlay.sizing.mode == .manual {
-                sizeSlider("Length", value: $overlay.sizing.length, range: TrailSizing.lengthRange)
-                sizeSlider("Height", value: $overlay.sizing.height, range: TrailSizing.heightRange)
-                if let size = overlay.fittedSize,
-                   size.width < overlay.sizing.length || size.height < overlay.sizing.height {
-                    Text("Limited by the available menu-bar space.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+            if overlay.isCrowded {
+                Text("Waiting for enough room on both sides.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if let size = overlay.fittedSize,
+                      size.width < overlay.sizing.length || size.height < overlay.sizing.height {
+                Text("Limited by the available menu-bar space.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-
-            Divider().opacity(0.6)
-            detection
         }
     }
 
@@ -189,50 +181,6 @@ struct NotchBeatControls: View {
             Text("pt").foregroundStyle(.secondary)
         }
         .font(.caption)
-    }
-
-    private var detection: some View {
-        HStack(alignment: .top, spacing: 8) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Menu item detection").font(.caption.weight(.semibold))
-                Text(fitDescription)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 4)
-            if !overlay.layoutAccess {
-                if overlay.layoutSetupStarted {
-                    Button("Open Settings…") { overlay.openLayoutSettings() }
-                        .controlSize(.small)
-                } else {
-                    Button("Set Up…") { overlay.requestLayoutAccess() }
-                        .controlSize(.small)
-                }
-            }
-        }
-    }
-
-    private var fitDescription: String {
-        if overlay.fit == .crowded {
-            return "Waiting for enough room on both sides."
-        }
-        if !overlay.layoutAccess {
-            if overlay.layoutSetupStarted {
-                return "Turn on NotchBeat in Privacy & Security › Accessibility."
-            }
-            return overlay.sizing.mode == .manual
-                ? "Enable detection to keep longer trails clear of menus."
-                : "Enable Accessibility to fit the trails around menus."
-        }
-        switch overlay.fit {
-        case .adaptive: return "Fits both trails in the smaller clear gap."
-        case .compact: return overlay.sizing.mode == .manual
-            ? "Using your dimensions and the menu positions available."
-            : "Using compact size while menu positions are unavailable."
-        case .idle: return "Menu item detection is on."
-        case .crowded: return "Waiting for enough room on both sides."
-        }
     }
 
     private var footer: some View {
