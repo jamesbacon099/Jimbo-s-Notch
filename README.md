@@ -29,6 +29,6 @@ The apps require macOS 14.2 or later and the Xcode command line tools. Run the s
 
 Each script prints the path to its signed app. Open that app from Finder or drag it to Applications. The combined app uses the music and visualizer sources in this repository.
 
-In Notch Buddy, turn on **Connect to music players** under **Music Monitor** for Apple Music or Spotify. In **Visualizer**, use **Listen** to start capture from your selected audio source. Allow Automation and audio recording when macOS requests them. The Music Monitor meter and the Equalizer effect in Notch Buddy use the connected music app as their source.
+In Notch Buddy, turn on **Connect to music players** under **Music Monitor** for Apple Music or Spotify. In **Visualizer**, use **Listen** to start capture from your selected audio source. Allow Automation and audio recording when macOS requests them. The Music Monitor meter can use music apps, all system audio, or the selected Visualizer input. For non-music inputs, two meters replace the album artwork. The Equalizer visualizer still uses the music app input. In Visualizer → Colors, enable **Keep color settings** to carry your palette and Spectrum hue across effects.
 
 The player uses native Liquid Glass when built with the macOS 26 SDK or newer and run on macOS 26 or later. The older macOS fallback uses a translucent material.

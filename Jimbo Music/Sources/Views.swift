@@ -26,13 +26,17 @@ struct IslandView: View {
                 model.expanded.toggle()
             } label: {
                 HStack {
-                    cover(size: min(24, compactHeight - 6))
+                    if !model.usesMusicMetadata, let spectrumView {
+                        spectrumView().frame(width: 25, height: 19)
+                    } else {
+                        cover(size: min(24, compactHeight - 6))
+                    }
                     Spacer(minLength: 0)
                     Group {
                         if let spectrumView {
                             spectrumView()
                         } else {
-                            Image(systemName: model.track?.playing == true ? "waveform" : "music.note")
+                            Image(systemName: model.displayTrack?.playing == true ? "waveform" : "music.note")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(model.accent)
                         }
@@ -50,53 +54,63 @@ struct IslandView: View {
             if model.expanded {
                 VStack(spacing: 10) {
                     HStack(spacing: 11) {
-                        cover(size: 46)
+                        if !model.usesMusicMetadata, let spectrumView {
+                            spectrumView().frame(width: 46, height: 46)
+                        } else {
+                            cover(size: 46)
+                        }
                         VStack(alignment: .leading, spacing: 3) {
                             Text(model.title).font(.system(size: 15, weight: .semibold)).lineLimit(1)
                             Text(model.artist).font(.caption).foregroundStyle(.white.opacity(0.64)).lineLimit(1)
                         }
                         Spacer()
-                        Text(model.track?.player.name ?? "Preview")
+                        Text(model.displayTrack?.player.name ?? (model.usesMusicMetadata ? "Preview" : "Audio"))
                             .font(.caption2).foregroundStyle(model.accent)
                     }
-                    Slider(value: Binding(get: { scrubbing ? scrubPosition : model.progress },
-                                          set: { scrubPosition = $0 }),
-                           in: 0...max(1, model.duration), onEditingChanged: { editing in
-                        if editing { scrubPosition = model.progress }
-                        else { model.seek(scrubPosition) }
-                        scrubbing = editing
-                    })
-                    .tint(model.accent)
-                    .accessibilityLabel("Playback position")
-                    HStack {
-                        Text(timestamp(scrubbing ? scrubPosition : model.progress))
-                        Spacer()
-                        Text(timestamp(model.duration))
+                    if model.usesMusicMetadata && (model.displayTrack != nil || model.preview) {
+                        Slider(value: Binding(get: { scrubbing ? scrubPosition : model.progress },
+                                              set: { scrubPosition = $0 }),
+                               in: 0...max(1, model.duration), onEditingChanged: { editing in
+                            if editing { scrubPosition = model.progress }
+                            else { model.seek(scrubPosition) }
+                            scrubbing = editing
+                        })
+                        .tint(model.accent)
+                        .accessibilityLabel("Playback position")
+                        HStack {
+                            Text(timestamp(scrubbing ? scrubPosition : model.progress))
+                            Spacer()
+                            Text(timestamp(model.duration))
+                        }
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.55))
+                        HStack(spacing: 26) {
+                            transport("Previous track", "backward.fill", "previous track")
+                            transport(model.displayTrack?.playing == true ? "Pause" : "Play",
+                                      model.displayTrack?.playing == true ? "pause.fill" : "play.fill", "playpause")
+                            transport("Next track", "forward.fill", "next track")
+                        }
+                        .font(.system(size: 18, weight: .semibold))
+                        HStack(spacing: 8) {
+                            Image(systemName: (model.playerVolume ?? 0) == 0 ? "speaker.slash" : "speaker.wave.2")
+                                .frame(width: 18)
+                                .accessibilityHidden(true)
+                            Slider(value: Binding(get: { model.playerVolume ?? 0 }, set: model.setPlayerVolume),
+                                   in: 0...100)
+                                .tint(model.accent)
+                                .accessibilityLabel((model.displayTrack?.player.name ?? "Player") + " volume")
+                            Text("\(Int(model.playerVolume ?? 0))%")
+                                .monospacedDigit()
+                                .frame(width: 34, alignment: .trailing)
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.78))
+                        .disabled(model.playerVolume == nil)
+                    } else if let spectrumView {
+                        spectrumView()
+                            .scaleEffect(1.5)
+                            .frame(height: 60)
                     }
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.55))
-                    HStack(spacing: 26) {
-                        transport("Previous track", "backward.fill", "previous track")
-                        transport(model.track?.playing == true ? "Pause" : "Play",
-                                  model.track?.playing == true ? "pause.fill" : "play.fill", "playpause")
-                        transport("Next track", "forward.fill", "next track")
-                    }
-                    .font(.system(size: 18, weight: .semibold))
-                    HStack(spacing: 8) {
-                        Image(systemName: (model.playerVolume ?? 0) == 0 ? "speaker.slash" : "speaker.wave.2")
-                            .frame(width: 18)
-                            .accessibilityHidden(true)
-                        Slider(value: Binding(get: { model.playerVolume ?? 0 }, set: model.setPlayerVolume),
-                               in: 0...100, step: 1)
-                            .tint(model.accent)
-                            .accessibilityLabel((model.track?.player.name ?? "Player") + " volume")
-                        Text("\(Int(model.playerVolume ?? 0))%")
-                            .monospacedDigit()
-                            .frame(width: 34, alignment: .trailing)
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.78))
-                    .disabled(model.playerVolume == nil)
                 }
                 .padding(.horizontal, 17)
                 .padding(.top, compactHeight + 5)
@@ -156,7 +170,7 @@ struct IslandView: View {
 
     private func cover(size: CGFloat) -> some View {
         Group {
-            if let artwork = model.artwork {
+            if let artwork = model.displayArtwork {
                 Image(nsImage: artwork).resizable().scaledToFill()
             } else {
                 ZStack {
@@ -187,6 +201,7 @@ struct SettingsView: View {
     var appName = "Jimbo Music"
     var visualizerTheme: Color?
     var equalizerColorControls: AnyView?
+    var monitorPreview: AnyView?
 
     var body: some View {
         if let visualizerTheme {
@@ -212,6 +227,13 @@ struct SettingsView: View {
     private var controls: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(appName).font(.title2.bold())
+            monitorPreview
+            if visualizerTheme != nil {
+                Picker("Equalizer input", selection: $model.monitorInput) {
+                    ForEach(MonitorInput.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .help("Visualizer source uses the input selected under Visualizer. Click Listen there to start it.")
+            }
             Text(model.status).font(.caption).foregroundStyle(.secondary)
             Picker("Player", selection: $model.source) {
                 Text("Auto").tag("Auto")
@@ -269,7 +291,7 @@ struct SettingsView: View {
     private func setting(_ title: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {
         HStack {
             Text(title).frame(width: 101, alignment: .leading)
-            Slider(value: value, in: range, step: 1).accessibilityLabel(title)
+            Slider(value: value, in: range).accessibilityLabel(title)
             Text(value.wrappedValue, format: .number.precision(.fractionLength(0)))
                 .monospacedDigit().foregroundStyle(.secondary).frame(width: 28, alignment: .trailing)
         }

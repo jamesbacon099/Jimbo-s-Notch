@@ -2,8 +2,10 @@ import SwiftUI
 
 enum RelaxedDance: String, CaseIterable {
     case standing = "Default"
+    case idle = "Standing"
     case martialArts = "Martial arts"
     case headbang = "Tweakers"
+    case raveHeadbang = "Rave headbang"
     case slowdance = "Slowdancing"
 }
 
@@ -152,8 +154,12 @@ struct VisualizerTrail: View {
         let slowStep = cos(slowPhase)
         let rock = sin(groove)
         let bounce = pow(sin(groove), 2)
-        let headbang = relaxedDance == .headbang && time > 0
-        let energy = emote || slowdance ? 0 : headbang ? 0.10 + channel.danceEnergy * 0.27 : channel.danceEnergy
+        let standing = relaxedDance == .idle
+        let classicRave = relaxedDance == .raveHeadbang
+        let headbang = (relaxedDance == .headbang || classicRave) && time > 0
+        let energy = emote || slowdance ? 0
+            : headbang ? (classicRave ? channel.danceEnergy * 0.16 : 0.10 + channel.danceEnergy * 0.27)
+            : channel.danceEnergy
         let martial: Double = relaxedDance == .martialArts ? 1 : 0
         func quietPose(_ standing: Double, _ guardPose: Double) -> Double {
             standing + (guardPose - standing) * martial
@@ -185,9 +191,11 @@ struct VisualizerTrail: View {
         let shoulderX = emote ? danceMix(breath * 0.026, -rock * 0.16) : slowdance ? danceMix(breath * 0.026, slowRock * 0.12) : blend(quietPose(breath * 0.026, slowSway * 0.09), sway * 0.12)
         let crouch = emote ? danceMix(breath * 0.018, 0.025 - bounce * 0.11) : slowdance ? danceMix(breath * 0.018, slowStep * 0.028) : blend(quietPose(breath * 0.018, 0.075 + abs(slowSway) * 0.075), dip * 0.13)
         let headbangEnergy = min(1, Double(channel.level) * 8)
-        let idleNod = (0.5 - 0.5 * cos(time * 3.7 + offset * 2 * .pi)) * 0.13
-        let liveNod = (0.5 - 0.5 * cos(phase * 2)) * (0.31 + channel.danceEnergy * 0.10)
-        let nod = headbang ? idleNod + (liveNod - idleNod) * headbangEnergy * 0.20 : 0
+        let idleNod = (0.5 - 0.5 * cos(time * (classicRave ? 2.1 : 3.7) + offset * 2 * .pi))
+            * (classicRave ? 0.08 : 0.13)
+        let liveNod = (0.5 - 0.5 * cos(phase * (classicRave ? 1 : 2)))
+            * (classicRave ? 0.24 : 0.31 + channel.danceEnergy * 0.10)
+        let nod = headbang ? idleNod + (liveNod - idleNod) * headbangEnergy * (classicRave ? 0.7 : 0.20) : 0
         let lean = headbang ? 0.025 + nod * 0.72 : 0
         let neck = point(shoulderX + lean, 0.29 + crouch + nod * 0.54)
         let hip = point(hipX, 0.60 + crouch + nod * 0.26)
@@ -224,7 +232,7 @@ struct VisualizerTrail: View {
             }
             let elbowX = emote ? danceMix(sign * 0.12, sign * pose.0) : slowdance ? danceMix(sign * 0.12, sign * 0.20 + slowRock * 0.05) : blend(quietPose(sign * 0.12, formElbowX), sign * (0.23 + reach * 0.09))
             let elbowY = emote ? danceMix(0.49, pose.1) : slowdance ? danceMix(0.49, 0.40 - sign * slowRock * 0.04) : blend(quietPose(0.49, formElbowY), 0.47 - reach * 0.16)
-            let pump = headbang ? (0.5 + 0.5 * cos(phase + sign * .pi / 2)) * headbangEnergy * 0.40 : 0
+            let pump = headbang ? (0.5 + 0.5 * cos(phase + sign * .pi / 2)) * headbangEnergy * (classicRave ? 0.18 : 0.40) : 0
             skeleton.addLine(to: point(shoulderX + elbowX + sign * pump * 0.08,
                                        elbowY + crouch - pump * 0.12))
             let handX = emote ? danceMix(sign * 0.13, pose.2) : slowdance ? danceMix(sign * 0.13, sign * 0.16 + slowRock * 0.12) : blend(quietPose(sign * 0.13, formHandX), sign * (0.09 + reach * 0.37 - cross * 0.27))
@@ -248,7 +256,7 @@ struct VisualizerTrail: View {
         context.stroke(skeleton, with: .linearGradient(Gradient(colors: palette.colors),
                        startPoint: point(0, 0.25), endPoint: point(0, 0.94)), style: stroke)
         context.fill(head, with: .color(palette.highlight))
-        if dancerSparks && time > 0 && (!(emote || slowdance) || activity > 0.02) {
+        if dancerSparks && time > 0 && !standing && (!(emote || slowdance) || activity > 0.02) {
             let beatsPerSecond = 1 / max(0.25, channel.beatDuration)
             let speed = headbang ? (0.32 + headbangEnergy * beatsPerSecond * 0.28)
                                  : 0.16 + (emote ? activity * 0.65 : slowdance ? activity * 0.20 : energy) * beatsPerSecond * 0.25

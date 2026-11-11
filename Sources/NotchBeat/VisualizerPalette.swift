@@ -115,15 +115,36 @@ final class VisualizerSettings: ObservableObject {
                             reversed: values["reversed"] as? Bool ?? false)
     }
 
+    @Published var keepColorSettings: Bool {
+        didSet {
+            guard keepColorSettings != oldValue else { return }
+            defaults.set(keepColorSettings, forKey: "keepColorSettings")
+            if keepColorSettings {
+                defaults.set(selectedPalette.rawValue, forKey: colorPrefix + "selectedPalette")
+                defaults.set(lastFixedPalette.rawValue, forKey: colorPrefix + "lastFixedPalette")
+                defaults.set(spectrumHue, forKey: colorPrefix + "spectrumHue")
+            } else {
+                restoreEffectColors()
+            }
+        }
+    }
+
+    private var colorPrefix: String { keepColorSettings ? Self.sharedColorPrefix : effectPrefix }
+    private static let sharedColorPrefix = "visualizer.sharedColors."
+
+    private func restoreEffectColors() {
+        let colors = Self.loadColors(defaults, prefix: effectPrefix)
+        selectedPalette = colors.palette
+        lastFixedPalette = colors.fixed
+        spectrumHue = colors.hue
+    }
+
     @Published var selectedStyle: VisualizerStyle {
         didSet {
             guard selectedStyle != oldValue else { return }
             defaults.set(selectedStyle.rawValue, forKey: "selectedVisualizerStyle")
-            let appearance = Self.loadAppearance(defaults, prefix: effectPrefix)
-            selectedPalette = appearance.palette
-            lastFixedPalette = appearance.fixed
-            spectrumHue = appearance.hue
-            sizing = appearance.sizing
+            if !keepColorSettings { restoreEffectColors() }
+            sizing = TrailSizing(defaults: defaults, prefix: effectPrefix)
             effectMotion = Self.loadMotion(defaults, style: selectedStyle)
         }
     }
@@ -136,10 +157,10 @@ final class VisualizerSettings: ObservableObject {
 
     @Published var selectedPalette: VisualizerPalette {
         didSet {
-            defaults.set(selectedPalette.rawValue, forKey: effectPrefix + "selectedPalette")
+            defaults.set(selectedPalette.rawValue, forKey: colorPrefix + "selectedPalette")
             if selectedPalette != .automatic && selectedPalette != .albumArt {
                 lastFixedPalette = selectedPalette
-                defaults.set(selectedPalette.rawValue, forKey: effectPrefix + "lastFixedPalette")
+                defaults.set(selectedPalette.rawValue, forKey: colorPrefix + "lastFixedPalette")
             }
         }
     }
@@ -154,6 +175,8 @@ final class VisualizerSettings: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        let sharesColors = defaults.bool(forKey: "keepColorSettings")
+        keepColorSettings = sharesColors
         rainfallFromNotch = defaults.bool(forKey: "rainfallFromNotch")
         rainfallDensity = min(3, max(1, defaults.object(forKey: "rainfallDensity") as? Double ?? 1))
         laserThickness = min(1.5, max(0.35, defaults.object(forKey: "laserThickness") as? Double ?? 1))
@@ -163,8 +186,7 @@ final class VisualizerSettings: ObservableObject {
         liquidGlassColors = defaults.bool(forKey: "liquidGlassColors")
         relaxedDance = defaults.string(forKey: "relaxedDance").flatMap { saved in
             switch saved {
-            case "Standing": return .standing
-            case "Rave headbang", "Rave": return .headbang
+            case "Rave": return .raveHeadbang
             case "Martial arts flow": return .martialArts
             default: return RelaxedDance(rawValue: saved)
             }
@@ -185,15 +207,16 @@ final class VisualizerSettings: ObservableObject {
             } ?? .classic
         selectedStyle = style
         effectMotion = Self.loadMotion(defaults, style: style)
-        let appearance = Self.loadAppearance(defaults, prefix: "visualizer." + style.rawValue + ".")
-        spectrumHue = appearance.hue
-        selectedPalette = appearance.palette
-        lastFixedPalette = appearance.fixed
-        sizing = appearance.sizing
+        let prefix = "visualizer." + style.rawValue + "."
+        let colors = Self.loadColors(defaults, prefix: sharesColors ? Self.sharedColorPrefix : prefix)
+        spectrumHue = colors.hue
+        selectedPalette = colors.palette
+        lastFixedPalette = colors.fixed
+        sizing = TrailSizing(defaults: defaults, prefix: prefix)
     }
 
-    private static func loadAppearance(_ defaults: UserDefaults, prefix: String)
-        -> (palette: VisualizerPalette, fixed: VisualizerPalette, hue: Double, sizing: TrailSizing) {
+    private static func loadColors(_ defaults: UserDefaults, prefix: String)
+        -> (palette: VisualizerPalette, fixed: VisualizerPalette, hue: Double) {
         func value(_ key: String) -> Any? {
             defaults.object(forKey: prefix + key) ?? defaults.object(forKey: key)
         }
@@ -201,7 +224,7 @@ final class VisualizerSettings: ObservableObject {
         let savedFixed = (value("lastFixedPalette") as? String).flatMap(VisualizerPalette.init(rawValue:))
         let fixed = [.automatic, .albumArt].contains(palette) ? savedFixed ?? .prism : palette
         let hue = min(1, max(0, value("spectrumHue") as? Double ?? 0.5))
-        return (palette, fixed, hue, TrailSizing(defaults: defaults, prefix: prefix))
+        return (palette, fixed, hue)
     }
 
     func setAutoColor(_ enabled: Bool) {
@@ -212,7 +235,7 @@ final class VisualizerSettings: ObservableObject {
         let hue = min(1, max(0, hue))
         if spectrumHue != hue { spectrumHue = hue }
         if selectedPalette != .spectrum { selectedPalette = .spectrum }
-        if persist { defaults.set(hue, forKey: effectPrefix + "spectrumHue") }
+        if persist { defaults.set(hue, forKey: colorPrefix + "spectrumHue") }
     }
 
     func setArtworkColors(_ colors: [UInt32]?) {

@@ -9,28 +9,31 @@ struct PaletteChooser: View {
                 Label("Colors", systemImage: "paintpalette")
                     .font(.callout.weight(.semibold))
                 Spacer()
+                Toggle("Keep color settings", isOn: $settings.keepColorSettings)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .font(.caption)
+                    .help("Use the same palette and Spectrum hue across visualizers.")
+            }
+            HStack(spacing: 14) {
                 Toggle("Rainbow", isOn: Binding(
                     get: { settings.selectedPalette == .automatic },
                     set: settings.setAutoColor
                 ))
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .font(.caption)
-                .fixedSize()
                 .help("Shift the palette with bass, treble, and beats.")
-            }
 
-            Toggle("Match album cover", isOn: Binding(
-                get: { settings.selectedPalette == .albumArt },
-                set: { enabled in
-                    if enabled { settings.selectedPalette = .albumArt }
-                    else { settings.setAutoColor(false) }
-                }
-            ))
+                Toggle("Match album cover", isOn: Binding(
+                    get: { settings.selectedPalette == .albumArt },
+                    set: { enabled in
+                        if enabled { settings.selectedPalette = .albumArt }
+                        else { settings.setAutoColor(false) }
+                    }
+                ))
+                .help("Matches the cover in Music or Spotify. Uses Rainbow when no cover is available.")
+            }
             .toggleStyle(.switch)
             .controlSize(.small)
             .font(.caption)
-            .help("Matches the cover in Music or Spotify. Uses Rainbow when no cover is available.")
 
             if settings.selectedPalette == .albumArt {
                 Text(settings.artworkColors == nil ? "Using Rainbow until artwork is available." : "Using album cover colors.")

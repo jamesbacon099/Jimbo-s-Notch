@@ -2,6 +2,14 @@ import AppKit
 import Combine
 import SwiftUI
 
+enum MonitorInput: String, CaseIterable, Identifiable {
+    case musicApps = "Music apps"
+    case system = "All system audio"
+    case visualizer = "Visualizer source"
+
+    var id: String { rawValue }
+}
+
 @MainActor
 final class MusicModel: ObservableObject {
     @Published var track: Track?
@@ -9,6 +17,16 @@ final class MusicModel: ObservableObject {
     @Published var expanded = false
     @Published var presentedSize: CGSize?
     @Published var preview = false
+    @Published var externalAudioActive = false
+    @Published var monitorInput = UserDefaults.standard.string(forKey: "monitorInput")
+        .flatMap(MonitorInput.init(rawValue:)) ?? .musicApps {
+        didSet {
+            guard monitorInput != oldValue else { return }
+            UserDefaults.standard.set(monitorInput.rawValue, forKey: "monitorInput")
+            autoAccent = nil
+            externalAudioActive = false
+        }
+    }
     @Published var progress = 0.0
     @Published private(set) var playerVolume: Double?
     @Published var status = "Choose a player to connect."
@@ -55,6 +73,7 @@ final class MusicModel: ObservableObject {
     }
 
     var glassTint: Color {
+        guard usesMusicMetadata else { return accent }
         switch glassTintSource {
         case "Album cover": return coverTint ?? accent
         case "Visualizer": return visualizerTint ?? accent
@@ -79,7 +98,7 @@ final class MusicModel: ObservableObject {
         switch tint {
         case "Auto": return autoAccent ?? Color(red: 0.76, green: 0.63, blue: 1)
         case "Custom": return Color(hue: min(1, max(0, accentHue)), saturation: 0.70, brightness: 1)
-        case "Album cover": return coverTint ?? Color(red: 0.76, green: 0.63, blue: 1)
+        case "Album cover": return (usesMusicMetadata ? coverTint : autoAccent) ?? Color(red: 0.76, green: 0.63, blue: 1)
         case "Mint": return Color(red: 0.42, green: 1, blue: 0.75)
         case "Coral": return Color(red: 1, green: 0.48, blue: 0.40)
         case "Ice": return Color(red: 0.55, green: 0.82, blue: 1)
@@ -88,9 +107,15 @@ final class MusicModel: ObservableObject {
         }
     }
 
-    var visible: Bool { preview || (track.map { $0.playing || showPaused || expanded } ?? false) }
-    var title: String { track?.title ?? "Midnight Drive" }
-    var artist: String { track?.artist ?? "Player preview" }
+    var usesMusicMetadata: Bool { monitorInput == .musicApps }
+    var displayTrack: Track? { usesMusicMetadata ? track : nil }
+    var displayArtwork: NSImage? { usesMusicMetadata ? artwork : nil }
+    var visible: Bool {
+        if !usesMusicMetadata { return preview || externalAudioActive || expanded }
+        return preview || (displayTrack.map { $0.playing || showPaused || expanded } ?? false)
+    }
+    var title: String { displayTrack?.title ?? (usesMusicMetadata ? "Midnight Drive" : monitorInput.rawValue) }
+    var artist: String { displayTrack?.artist ?? (usesMusicMetadata ? "Player preview" : "Live audio spectrum") }
     var duration: Double { track?.duration ?? 218 }
 
     init() { restart() }
