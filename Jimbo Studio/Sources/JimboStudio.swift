@@ -224,7 +224,7 @@ private struct MonitorColorControls: View {
                                 Circle().strokeBorder(.primary.opacity(colors.selection == palette ? 0.9 : 0.15),
                                                       lineWidth: colors.selection == palette ? 2 : 1)
                             }
-                        Text(palette.rawValue).font(.system(size: 9)).lineLimit(1)
+                        Text(palette.displayName).font(.system(size: 9)).lineLimit(1)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 3)

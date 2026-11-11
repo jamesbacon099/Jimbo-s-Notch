@@ -37,6 +37,7 @@ enum VisualizerPalette: String, CaseIterable, Identifiable {
     case spectrum = "Spectrum"
 
     var id: String { rawValue }
+    var displayName: String { self == .automatic ? "Rainbow" : rawValue }
 
     var colors: TrailPalette {
         switch self {

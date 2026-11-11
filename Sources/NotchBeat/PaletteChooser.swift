@@ -9,7 +9,7 @@ struct PaletteChooser: View {
                 Label("Colors", systemImage: "paintpalette")
                     .font(.callout.weight(.semibold))
                 Spacer()
-                Toggle("Auto color", isOn: Binding(
+                Toggle("Rainbow", isOn: Binding(
                     get: { settings.selectedPalette == .automatic },
                     set: settings.setAutoColor
                 ))
@@ -30,10 +30,10 @@ struct PaletteChooser: View {
             .toggleStyle(.switch)
             .controlSize(.small)
             .font(.caption)
-            .help("Matches the cover in Music or Spotify. Uses Auto Color when no cover is available.")
+            .help("Matches the cover in Music or Spotify. Uses Rainbow when no cover is available.")
 
             if settings.selectedPalette == .albumArt {
-                Text(settings.artworkColors == nil ? "Using Auto Color until artwork is available." : "Using album cover colors.")
+                Text(settings.artworkColors == nil ? "Using Rainbow until artwork is available." : "Using album cover colors.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

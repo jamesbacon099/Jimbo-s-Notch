@@ -227,7 +227,7 @@ struct SettingsView: View {
             }
             equalizerColorControls
             Picker("Accent", selection: $model.tint) {
-                ForEach((visualizerTheme == nil ? [] : ["Auto"]) + ["Album cover", "Custom", "Violet", "Mint", "Coral", "Ice", "White"], id: \.self) { Text($0) }
+                ForEach((visualizerTheme == nil ? [] : ["Auto"]) + ["Album cover", "Custom", "Violet", "Mint", "Coral", "Ice", "White"], id: \.self) { Text($0 == "Auto" ? "Rainbow" : $0) }
             }
             if model.tint == "Custom" {
                 HStack {
