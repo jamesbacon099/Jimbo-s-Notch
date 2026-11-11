@@ -144,8 +144,6 @@ final class NotchOverlayController: ObservableObject {
         fullScreenDisplay = display
         nextFullScreenProbe = now + 0.45
 
-        // A native full-screen window can start below the physical notch.
-        let contentTop = display.maxY - screen.safeAreaInsets.top
         let ownPID = Int(ProcessInfo.processInfo.processIdentifier)
         let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
                                                  kCGNullWindowID) as? [[String: Any]] ?? []
@@ -160,10 +158,12 @@ final class NotchOverlayController: ObservableObject {
 
             let frame = CGRect(x: x, y: originY - y - height, width: width, height: height)
             let tolerance: CGFloat = 2
+            // Browsers can report their content below the notch and toolbar.
+            // Full-width content still reaches the physical bottom of the display.
             return abs(frame.minX - display.minX) <= tolerance
                 && abs(frame.maxX - display.maxX) <= tolerance
                 && abs(frame.minY - display.minY) <= tolerance
-                && frame.maxY >= contentTop - tolerance
+                && frame.height >= display.height * 0.75
                 && frame.maxY <= display.maxY + tolerance
         }
         return hasFullScreenWindow
