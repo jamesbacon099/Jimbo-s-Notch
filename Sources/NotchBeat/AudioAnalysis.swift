@@ -17,10 +17,15 @@ struct ChannelFrame: Equatable {
     var bass: Float = 0
     var impact: Float = 0
     var bands = SIMD16<Float>(repeating: 0)
+    var spectrum = SIMD16<Float>(repeating: 0)
     var lastHit: TimeInterval?
+    var beatDuration: TimeInterval = 0.5
+    var danceBeat: Double = 0
+    var danceEnergy: Double = 0
     var waveform = Waveform()
 
     var isActive: Bool { max(level, bass, impact) > 0.002 }
+    var hasSpectrum: Bool { spectrum.max() > 0.015 }
 }
 
 struct AudioFrame: Equatable {
@@ -99,6 +104,7 @@ final class AudioAnalysis {
     private let impactDecay: Float
     private var requestedLowPower = false
     private var lowPower = false
+    private var tempo = BeatTempo()
     private var leftOnsets = OnsetDetector()
     private var rightOnsets = OnsetDetector()
     private let lock = NSLock()
@@ -184,6 +190,7 @@ final class AudioAnalysis {
             lock.unlock()
             if captureMode != mode {
                 captureMode = mode
+                tempo = BeatTempo()
                 leftOnsets = OnsetDetector()
                 rightOnsets = OnsetDetector()
             }
@@ -233,6 +240,9 @@ final class AudioAnalysis {
         } else {
             rightOnsets.apply(to: &frame.right, at: now, decay: decay)
         }
+        tempo.update(hit: max(frame.left.lastHit ?? 0, frame.right.lastHit ?? 0))
+        frame.left.beatDuration = tempo.duration
+        frame.right.beatDuration = tempo.duration
         if lock.try() {
             if requestedMode == captureMode { latest = (frame, now) }
             lock.unlock()

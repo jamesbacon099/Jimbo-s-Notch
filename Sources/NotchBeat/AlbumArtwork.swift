@@ -75,7 +75,7 @@ enum AlbumArtwork {
             if application id "\(player.rawValue)" is not running then return ""
             with timeout of 4 seconds
                 tell application id "\(player.rawValue)"
-                    if player state is not playing then return ""
+                    if player state is stopped then return ""
                     \(body)
                 end tell
             end timeout
@@ -109,6 +109,10 @@ enum AlbumArtwork {
     }
 
     static func palette(_ data: Data) -> [UInt32]? {
+        colors(from: data)?.palette
+    }
+
+    static func colors(from data: Data) -> (palette: [UInt32], brightest: UInt32?)? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -164,6 +168,16 @@ enum AlbumArtwork {
             colors.append(color)
             if colors.count == 3 { break }
         }
-        return colors.isEmpty ? nil : colors
+        func luminance(_ rgb: UInt32) -> Double {
+            func linear(_ component: UInt32) -> Double {
+                let value = Double(component & 255) / 255
+                return value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+            }
+            return 0.2126 * linear(rgb >> 16) + 0.7152 * linear(rgb >> 8) + 0.0722 * linear(rgb)
+        }
+        let brightest = ranked.lazy.filter { $0.count >= 2 }.map(\.color)
+            .filter { luminance($0) >= 0.175 }
+            .max { luminance($0) < luminance($1) }
+        return colors.isEmpty ? nil : (colors, brightest)
     }
 }

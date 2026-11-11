@@ -23,7 +23,7 @@ enum NotchBeatIcon {
             return true
         }
         image.isTemplate = true
-        image.accessibilityDescription = "NotchBeat"
+        image.accessibilityDescription = "Jimbo's Notch"
         return image
     }()
 }

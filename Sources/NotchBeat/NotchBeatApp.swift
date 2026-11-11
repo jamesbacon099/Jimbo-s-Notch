@@ -18,7 +18,7 @@ struct NotchBeatApp: App {
             NotchBeatControls(audio: audio, overlay: overlay, settings: overlay.settings)
         } label: {
             Image(nsImage: NotchBeatIcon.image)
-                .accessibilityLabel("NotchBeat")
+                .accessibilityLabel("Jimbo's Notch")
         }
         .menuBarExtraStyle(.window)
     }

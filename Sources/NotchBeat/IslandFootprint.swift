@@ -18,14 +18,17 @@ enum IslandFootprint {
         let frame: CGRect
         let level: Int
         var ownerName: String? = nil
+        var isJimboMusic = false
     }
 
     static func current(in space: MenuBarSpace) -> CGRect? {
-        guard space.hasNotch,
-              let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+        guard let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
                 as? [[String: Any]] else { return nil }
 
         let ownPID = Int(ProcessInfo.processInfo.processIdentifier)
+        let musicPIDs = Set(NSRunningApplication.runningApplications(withBundleIdentifier: "local.jimbo.music")
+            .map { Int($0.processIdentifier) })
+        guard space.hasNotch || !musicPIDs.isEmpty else { return nil }
         let candidates: [Window] = windows.compactMap { info in
             guard let pid = info[kCGWindowOwnerPID as String] as? Int, pid != ownPID,
                   let level = info[kCGWindowLayer as String] as? Int, level > CGWindowLevelForKey(.normalWindow),
@@ -36,7 +39,8 @@ enum IslandFootprint {
             return Window(
                 frame: CGRect(x: x, y: space.windowOriginY - y - height, width: width, height: height),
                 level: level,
-                ownerName: info[kCGWindowOwnerName as String] as? String
+                ownerName: info[kCGWindowOwnerName as String] as? String,
+                isJimboMusic: musicPIDs.contains(pid)
             )
         }
         return footprint(in: space, windows: candidates)
@@ -45,7 +49,6 @@ enum IslandFootprint {
     static func footprint(in space: MenuBarSpace, windows: [Window]) -> CGRect? {
         let leftEdge = space.leftArea.maxX
         let rightEdge = space.rightArea.minX
-        guard space.hasNotch else { return nil }
         let center = (leftEdge + rightEdge) / 2
         let barTop = space.leftArea.maxY
         let barBottom = space.leftArea.minY
@@ -71,8 +74,10 @@ enum IslandFootprint {
                   abs(rect.maxY - barTop) <= 12, rect.maxY > barBottom,
                   rect.minY < barTop - 7 else { return footprint }
             let bounds: CGRect
-            if space.hasSystemIsland {
+            if window.isJimboMusic || space.hasSystemIsland {
                 bounds = rect
+            } else if !space.hasNotch {
+                return footprint
             } else if window.ownerName == "NotchBox" {
                 // Its compact controls can occupy only part of a much wider transparent window.
                 bounds = rect.intersection(compactArea)

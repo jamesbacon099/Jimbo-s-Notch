@@ -5,10 +5,10 @@ project="$(cd "$(dirname "$0")" && pwd)"
 destination="${1:-$project/.build}"
 mkdir -p "$destination" "$project/.build/module-cache"
 destination="$(cd "$destination" && pwd)"
-app="$destination/NotchBeat.app"
+app="$destination/Jimbo's Notch.app"
 staging="$(mktemp -d "$destination/.notchbeat-build.XXXXXX")"
 trap 'rm -rf "$staging"' EXIT
-bundle="$staging/NotchBeat.app"
+bundle="$staging/Jimbo's Notch.app"
 
 mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
 cp "$project/Info.plist" "$bundle/Contents/Info.plist"

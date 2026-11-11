@@ -5,16 +5,17 @@ struct NotchBeatControls: View {
     @ObservedObject var audio: AudioMonitor
     @ObservedObject var overlay: NotchOverlayController
     @ObservedObject var settings: VisualizerSettings
+    @State private var appearanceTab = AppearanceTab.colors
     @State private var applications: [AudioApplication] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
             header
             channelControl
-            LiveSignalPreview(frames: audio.frames, settings: settings, mode: audio.channelMode, lowPower: audio.lowPower)
+            LiveSignalPreview(frames: settings.selectedStyle == .equalizer ? overlay.musicSpectrumFrames ?? audio.frames : audio.frames, settings: settings, mode: audio.channelMode, lowPower: audio.lowPower)
             audioControls
                 .modifier(ControlCard())
-            PaletteChooser(settings: settings)
+            appearanceControls
                 .modifier(ControlCard())
             waveformSize
                 .modifier(ControlCard())
@@ -38,6 +39,67 @@ struct NotchBeatControls: View {
         }
     }
 
+    private enum AppearanceTab: String, CaseIterable {
+        case colors = "Colors"
+        case visualizer = "Visualizer"
+    }
+
+    private var appearanceControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("Appearance", selection: $appearanceTab) {
+                ForEach(AppearanceTab.allCases, id: \.self) { tab in
+                    Text(tab.rawValue).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            if appearanceTab == .colors {
+                Toggle("Border fade", isOn: $settings.liquidGlassColors)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                PaletteChooser(settings: settings)
+            } else {
+                Picker("Visualizer", selection: $settings.selectedStyle) {
+                    ForEach(VisualizerStyle.allCases) { style in
+                        Text(style.rawValue).tag(style)
+                    }
+                }
+                .pickerStyle(.menu)
+                if settings.selectedStyle == .splash {
+                    Slider(value: $settings.splashDensity, in: 1...3) { Text("Splash density") }
+                }
+                if settings.selectedStyle == .fire {
+                    Toggle("Flow from notch", isOn: $settings.flowFromNotch)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .font(.caption)
+                        .help("Start the effect at the notch edges and send it outward.")
+                }
+                if settings.selectedStyle == .dancers {
+                    Toggle("Dancer sparks", isOn: $settings.dancerSparks)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                    Picker("Dance style", selection: $settings.relaxedDance) {
+                        ForEach(RelaxedDance.allCases, id: \.self) { pose in
+                            Text(pose.rawValue).tag(pose)
+                        }
+                    }
+                    Picker("Dancers per side", selection: $settings.dancersPerSide) {
+                        ForEach(1...5, id: \.self) { count in
+                            Text(count.formatted()).tag(count)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+                Text(settings.selectedStyle.summary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Colors and trail size are saved for each effect.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     private var header: some View {
         HStack(spacing: 11) {
             Image(nsImage: NotchBeatIcon.image)
@@ -49,7 +111,7 @@ struct NotchBeatControls: View {
                 .modifier(GlassBadge(tint: settings.basePalette.primary))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text("NotchBeat")
+                Text("Jimbo's Notch")
                     .font(.system(size: 21, weight: .semibold, design: .rounded))
                 Text(audio.status)
                     .font(.caption)
@@ -111,6 +173,15 @@ struct NotchBeatControls: View {
                 .labelsHidden()
                 .frame(maxWidth: 205, alignment: .trailing)
             }
+            if audio.source != .microphone {
+                Picker("Visualizer response", selection: $audio.playbackVolume) {
+                    ForEach(AudioMonitor.PlaybackVolume.allCases, id: \.self) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .font(.caption)
+                .help("Choose whether the visualizer follows the Mac’s volume or responds to captured playback at any volume.")
+            }
             HStack(spacing: 8) {
                 Text("Sensitivity")
                     .frame(width: 66, alignment: .leading)
@@ -147,18 +218,18 @@ struct NotchBeatControls: View {
                 }
             }
 
-            sizeSlider("Length", value: $overlay.sizing.length, range: TrailSizing.lengthRange)
-            sizeSlider("Height", value: $overlay.sizing.height, range: TrailSizing.heightRange)
-            sizeSlider("Notch gap", value: $overlay.sizing.gap, range: TrailSizing.gapRange)
-                .help("Negative values move both trails inward. The physical notch limits how close they can get.")
+            sizeSlider("Length", value: $settings.sizing.length, range: TrailSizing.lengthRange)
+            sizeSlider("Height", value: $settings.sizing.height, range: TrailSizing.heightRange)
+            sizeSlider("Notch gap", value: $settings.sizing.gap, range: overlay.gapRange)
+                .help("Move the anchors from the display center to the screen edges. Areas behind the physical camera cutout cannot be displayed.")
 
             if overlay.isCrowded {
                 Text("Waiting for enough room on both sides.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else if let size = overlay.fittedSize,
-                      size.width < overlay.sizing.length || size.height < overlay.sizing.height {
-                Text("Limited by the available menu-bar space.")
+                      size.width < settings.sizing.length || size.height < settings.sizing.height {
+                Text("Limited by the display dimensions.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -186,7 +257,7 @@ struct NotchBeatControls: View {
     private var footer: some View {
         HStack {
             Spacer()
-            Button("Quit NotchBeat") {
+            Button("Quit Jimbo's Notch") {
                 audio.stop()
                 NSApp.terminate(nil)
             }

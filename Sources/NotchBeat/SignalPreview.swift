@@ -8,7 +8,7 @@ struct LiveSignalPreview: View {
     @State private var frame = AudioFrame()
 
     var body: some View {
-        SignalPreview(frame: frame, palette: settings.palette(for: frame), mode: mode, lowPower: lowPower)
+        SignalPreview(frame: frame, palette: settings.palette(for: frame), mode: mode, lowPower: lowPower, style: settings.selectedStyle, flowFromNotch: settings.flowFromNotch, dancersPerSide: settings.dancersPerSide, relaxedDance: settings.relaxedDance, glassFade: settings.liquidGlassColors, splashDensity: settings.splashDensity, dancerSparks: settings.dancerSparks)
             .onReceive(frames.$current.throttle(for: .milliseconds(50), scheduler: RunLoop.main, latest: true)) {
                 frame = $0
             }
@@ -20,9 +20,18 @@ struct SignalPreview: View {
     let palette: TrailPalette
     var mode = ChannelMode.stereo
     var lowPower = false
+    var style = VisualizerStyle.classic
+    var flowFromNotch = false
+    var dancersPerSide = 1
+    var relaxedDance = RelaxedDance.martialArts
+    var glassFade = false
+    var splashDensity = 1.0
+    var dancerSparks = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var hasSignal: Bool { frame.isActive }
+    private var hasSignal: Bool {
+        style == .equalizer ? frame.left.hasSpectrum || frame.right.hasSpectrum : frame.isActive
+    }
 
     var body: some View {
         VStack(spacing: 6) {
@@ -37,14 +46,14 @@ struct SignalPreview: View {
 
             let time = reduceMotion || !hasSignal ? 3.4 : frame.animationTime
             HStack(spacing: 5) {
-                ClassicTrail(channel: hasSignal ? frame.left : Self.previewLeft, time: time,
-                             palette: palette, side: .left, mirrored: mode == .mono, lowPower: lowPower)
+                VisualizerTrail(style: style, flowFromNotch: flowFromNotch, dancersPerSide: dancersPerSide, relaxedDance: relaxedDance, channel: hasSignal ? frame.left : Self.previewLeft, time: time,
+                             palette: palette, side: .left, mirrored: mode == .mono, lowPower: lowPower, glassFade: glassFade, splashDensity: splashDensity, dancerSparks: dancerSparks)
                 Capsule()
                     .fill(.black.opacity(0.68))
                     .overlay { Capsule().strokeBorder(.white.opacity(0.13), lineWidth: 1) }
                     .frame(width: 31, height: 12)
-                ClassicTrail(channel: hasSignal ? frame.right : mode == .mono ? Self.previewLeft : Self.previewRight,
-                             time: time, palette: palette, side: .right, mirrored: mode == .mono, lowPower: lowPower)
+                VisualizerTrail(style: style, flowFromNotch: flowFromNotch, dancersPerSide: dancersPerSide, relaxedDance: relaxedDance, channel: hasSignal ? frame.right : mode == .mono ? Self.previewLeft : Self.previewRight,
+                             time: time, palette: palette, side: .right, mirrored: mode == .mono, lowPower: lowPower, glassFade: glassFade, splashDensity: splashDensity, dancerSparks: dancerSparks)
             }
             .frame(height: 43)
             .accessibilityHidden(true)
@@ -95,6 +104,9 @@ struct SignalPreview: View {
     private static func demo(level: Float, phase: Double) -> ChannelFrame {
         var channel = ChannelFrame(level: level, bass: level * 0.8, impact: level * 0.65,
                                    bands: SIMD16<Float>(repeating: level * 0.55))
+        for band in 0..<16 {
+            channel.spectrum[band] = level * (0.25 + 0.75 * abs(sin(Float(band) * 0.47)))
+        }
         for index in 0..<32 {
             let progress = Double(index) / 31
             let pulse = Float(abs(sin(progress * .pi * 3 + phase))) * level

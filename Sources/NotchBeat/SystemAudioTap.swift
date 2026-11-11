@@ -16,7 +16,7 @@ final class SystemAudioTap {
             } else {
                 description = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
             }
-            description.name = processIDs == nil ? "NotchBeat System Audio" : "NotchBeat App Audio"
+            description.name = processIDs == nil ? "Jimbo's Notch System Audio" : "Jimbo's Notch App Audio"
             description.isPrivate = true
             description.muteBehavior = .unmuted
             try check(AudioHardwareCreateProcessTap(description, &tapID), "Create system audio tap")
@@ -37,7 +37,7 @@ final class SystemAudioTap {
             }
 
             let properties: [String: Any] = [
-                kAudioAggregateDeviceNameKey: "NotchBeat Audio Input",
+                kAudioAggregateDeviceNameKey: "Jimbo's Notch Audio Input",
                 kAudioAggregateDeviceUIDKey: UUID().uuidString,
                 kAudioAggregateDeviceIsPrivateKey: true,
                 kAudioAggregateDeviceTapAutoStartKey: true,

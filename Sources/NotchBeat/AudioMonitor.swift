@@ -1,20 +1,36 @@
 import AppKit
 import AVFoundation
+import AudioToolbox
 import CoreAudio
 import Foundation
 
 @MainActor
 final class AudioFrames: ObservableObject {
-    @Published fileprivate(set) var current = AudioFrame()
+    @Published var current = AudioFrame()
 }
 
 @MainActor
 final class AudioMonitor: ObservableObject {
     let frames = AudioFrames()
+    private let ignoresOutputVolume: Bool
+
+    init(ignoresOutputVolume: Bool = false) {
+        self.ignoresOutputVolume = ignoresOutputVolume
+    }
     @Published private(set) var status = "Stopped"
     @Published private(set) var running = false
     @Published private(set) var source = AudioSource.system
     @Published var sensitivity: Double = 2.4
+    enum PlaybackVolume: String, CaseIterable {
+        case followOutput = "Follow Mac volume"
+        case ignoreOutput = "Even when muted"
+    }
+
+    @Published var playbackVolume = UserDefaults.standard.string(forKey: "playbackVolume")
+        .flatMap(PlaybackVolume.init(rawValue:)) ?? .followOutput {
+        didSet { UserDefaults.standard.set(playbackVolume.rawValue, forKey: "playbackVolume") }
+    }
+
     @Published var lowPower = UserDefaults.standard.bool(forKey: "lowPower") {
         didSet {
             guard lowPower != oldValue else { return }
@@ -53,12 +69,18 @@ final class AudioMonitor: ObservableObject {
     private var timer: Timer?
     private var animated = false
     private var lastFrameTime: TimeInterval?
+    private var danceBeat = 0.0
+    private var danceEnergy = 0.0
+    private var kickActivity = 0.0
+    private var danceBeatDuration = 0.5
     private var colorMotion = MusicColorMotion()
     private var appTimer: Timer?
     private var appProcessIDs: [AudioObjectID] = []
     private var startTask: Task<Void, Never>?
     private var outputListener: AudioObjectPropertyListenerBlock?
     private var lastAudible: TimeInterval?
+    private var nextVolumeRead: TimeInterval = 0
+    private var cachedOutputGain: Float = 1
 
     func select(_ newSource: AudioSource) {
         guard source != newSource else { return }
@@ -151,11 +173,16 @@ final class AudioMonitor: ObservableObject {
         timer = nil
         animated = false
         lastFrameTime = nil
+        danceBeat = 0
+        danceEnergy = 0
+        kickActivity = 0
+        danceBeatDuration = 0.5
         colorMotion = MusicColorMotion()
         systemTap?.stop()
         systemTap = nil
         analysis = nil
         lastAudible = nil
+        nextVolumeRead = 0
         if frames.current != AudioFrame() { frames.current = AudioFrame() }
     }
 
@@ -219,6 +246,48 @@ final class AudioMonitor: ObservableObject {
         }
     }
 
+    private func outputGain(at time: TimeInterval) -> Float {
+        guard !ignoresOutputVolume, source != .microphone, playbackVolume == .followOutput else { return 1 }
+        guard time >= nextVolumeRead else { return cachedOutputGain }
+        nextVolumeRead = time + 0.25
+
+        var device = AudioObjectID(kAudioObjectUnknown)
+        var address = Self.outputAddress
+        var size = UInt32(MemoryLayout<AudioObjectID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address,
+                                         0, nil, &size, &device) == noErr,
+              device != kAudioObjectUnknown else {
+            cachedOutputGain = 1
+            return 1
+        }
+
+        func read<T>(_ selector: AudioObjectPropertySelector, element: AudioObjectPropertyElement,
+                     initial: T) -> T? {
+            var address = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioDevicePropertyScopeOutput,
+                                                     mElement: element)
+            var value = initial
+            var size = UInt32(MemoryLayout<T>.size)
+            guard AudioObjectHasProperty(device, &address) else { return nil }
+            let result = withUnsafeMutableBytes(of: &value) { bytes in
+                AudioObjectGetPropertyData(device, &address, 0, nil, &size, bytes.baseAddress!)
+            }
+            return result == noErr ? value : nil
+        }
+        let main = kAudioObjectPropertyElementMain
+        if read(kAudioDevicePropertyMute, element: main, initial: UInt32(0)) == 1 {
+            cachedOutputGain = 0
+        } else {
+            let scalar = read(kAudioHardwareServiceDeviceProperty_VirtualMainVolume, element: main, initial: Float(1))
+                ?? read(kAudioDevicePropertyVolumeScalar, element: main, initial: Float(1))
+            let channelVolumes = [UInt32(1), UInt32(2)].compactMap { element -> Float? in
+                if read(kAudioDevicePropertyMute, element: element, initial: UInt32(0)) == 1 { return 0 }
+                return read(kAudioDevicePropertyVolumeScalar, element: element, initial: Float(1))
+            }
+            cachedOutputGain = min(1, max(0, scalar ?? channelVolumes.max() ?? 1))
+        }
+        return cachedOutputGain
+    }
+
     private func startTimer(animated: Bool = false) {
         timer?.invalidate()
         self.animated = animated
@@ -238,9 +307,24 @@ final class AudioMonitor: ObservableObject {
         let elapsed = min(now - (lastFrameTime ?? now - 1.0 / 30), 0.16)
         lastFrameTime = now
         let decay = pow(0.83, Float(elapsed * 60))
+        let gain = outputGain(at: now)
         let input: AudioFrame
         if let latest = analysis.read(), latest.frame.mode == channelMode, now - latest.timestamp < 0.25 {
-            input = latest.frame
+            var adjusted = latest.frame
+            if gain < 1 {
+                func scale(_ channel: inout ChannelFrame) {
+                    channel.level *= gain
+                    channel.bass *= gain
+                    channel.impact *= gain
+                    channel.bands *= gain
+                    channel.waveform.high *= gain
+                    channel.waveform.low *= gain
+                    if gain == 0 { channel.lastHit = nil }
+                }
+                scale(&adjusted.left)
+                scale(&adjusted.right)
+            }
+            input = adjusted
             if input.level > 0.001 { lastAudible = now }
         } else {
             input = AudioFrame(mode: channelMode)
@@ -259,17 +343,45 @@ final class AudioMonitor: ObservableObject {
             next.bass = smooth(previous.bass, sample.bass)
             next.impact = smooth(previous.impact, sample.impact * 0.70)
             next.lastHit = sample.lastHit
+            next.beatDuration = danceBeatDuration
+            next.danceBeat = danceBeat
+            next.danceEnergy = danceEnergy
             next.waveform = next.isActive ? sample.waveform : Waveform()
-            for band in 0..<16 { next.bands[band] = smooth(previous.bands[band], sample.bands[band]) }
+            for band in 0..<16 {
+                let magnitude = sample.bands[band]
+                next.bands[band] = smooth(previous.bands[band], magnitude)
+                // Display a fixed 60 dB range so quiet harmonics remain visible.
+                let decibels = 20 * log10(max(0.001, magnitude))
+                let spectrum = min(1, max(0, (decibels + 60) / 60))
+                next.spectrum[band] = max(spectrum, previous.spectrum[band] * decay)
+            }
             return next
         }
+
+        // Integrate tempo into a continuous phase. New onsets never reset the pose.
+        if input.isActive {
+            danceBeatDuration += (input.left.beatDuration - danceBeatDuration) * (1 - exp(-elapsed / 3.0))
+        }
+        danceBeat += elapsed / danceBeatDuration
+
+        // Bass alone can be sustained ambience. Repeated attacks in the low end
+        // contribute most of the energy for the party choreography.
+        let bass = Double(max(input.left.bass, input.right.bass))
+        let level = Double(input.level)
+        let bassPresence = min(1, bass / max(0.004, level) * 1.7)
+        let impact = Double(max(input.left.impact, input.right.impact))
+        let kick = min(1, impact * 2.6) * bassPresence
+        kickActivity += (kick - kickActivity) * (1 - exp(-elapsed / 1.1))
+        let energyTarget = min(1, max(0, kickActivity * 3.8 - 0.08) + bassPresence * 0.18)
+        let energyResponse = energyTarget > danceEnergy ? 1.8 : 2.8
+        danceEnergy += (energyTarget - danceEnergy) * (1 - exp(-elapsed / energyResponse))
 
         let frame = frames.current
         let previous = frame.mode == input.mode ? frame : AudioFrame(mode: input.mode)
         let left = smoothChannel(previous.left, input.left)
         let right = input.mode == .mono ? left : smoothChannel(previous.right, input.right)
         var next = AudioFrame(left: left, right: right, mode: input.mode)
-        next.animationTime = next.isActive ? now : 0
+        next.animationTime = now
         next.musicHue = colorMotion.update(with: next, elapsed: elapsed)
         if frame != next { frames.current = next }
         if next.isActive != animated { startTimer(animated: next.isActive) }

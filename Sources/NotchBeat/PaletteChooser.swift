@@ -38,7 +38,7 @@ struct PaletteChooser: View {
                     .foregroundStyle(.secondary)
             }
 
-            HStack(spacing: 7) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 7), count: 5), spacing: 8) {
                 ForEach(VisualizerPalette.allCases.filter { $0 != .spectrum && $0 != .automatic && $0 != .albumArt }) { palette in
                     swatch(palette)
                 }

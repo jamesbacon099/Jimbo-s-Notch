@@ -7,18 +7,21 @@ enum TrailSide: CaseIterable {
 struct TrailSizing: Equatable {
     static let lengthRange = 38.0...720.0
     static let heightRange = 5.0...42.0
-    static let gapRange = -100.0...100.0
+    static let gapRange = -10000.0...10000.0
     static let defaultGap = 15.0
     var length: Double
     var height: Double
     var gap: Double
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, prefix: String = "") {
+        func saved(_ key: String) -> Double? {
+            (defaults.object(forKey: prefix + key) ?? defaults.object(forKey: key)) as? Double
+        }
         length = min(Self.lengthRange.upperBound,
-                     max(Self.lengthRange.lowerBound, defaults.object(forKey: "trailLength") as? Double ?? 178))
+                     max(Self.lengthRange.lowerBound, saved("trailLength") ?? 178))
         height = min(Self.heightRange.upperBound,
-                     max(Self.heightRange.lowerBound, defaults.object(forKey: "trailHeight") as? Double ?? 26))
-        let savedGap = defaults.object(forKey: "trailGap") as? Double ?? Self.defaultGap
+                     max(Self.heightRange.lowerBound, saved("trailHeight") ?? 26))
+        let savedGap = saved("trailGap") ?? Self.defaultGap
         gap = min(Self.gapRange.upperBound, max(Self.gapRange.lowerBound, savedGap))
     }
 
@@ -26,10 +29,10 @@ struct TrailSizing: Equatable {
         CGSize(width: length, height: height)
     }
 
-    func saveChanges(from previous: TrailSizing, to defaults: UserDefaults = .standard) {
-        if length != previous.length { defaults.set(length, forKey: "trailLength") }
-        if height != previous.height { defaults.set(height, forKey: "trailHeight") }
-        if gap != previous.gap { defaults.set(gap, forKey: "trailGap") }
+    func saveChanges(from previous: TrailSizing, to defaults: UserDefaults, prefix: String) {
+        if length != previous.length { defaults.set(length, forKey: prefix + "trailLength") }
+        if height != previous.height { defaults.set(height, forKey: prefix + "trailHeight") }
+        if gap != previous.gap { defaults.set(gap, forKey: prefix + "trailGap") }
     }
 }
 
@@ -60,40 +63,46 @@ struct MenuBarSpace: Equatable, Sendable {
         )
     }
 
-    func balancedLanes(island: CGRect?, scale: CGFloat,
-                       requestedSize: CGSize, gap: CGFloat) -> (left: CGRect, right: CGRect)? {
-        let scale = max(1, scale)
-        let originX = leftArea.minX
-        // Mirror around the display midpoint while clearing both the window and hardware bounds.
-        let centerInPixels = ((rightArea.maxX - originX) * scale).rounded() / 2
+    private func anchorGeometry(island: CGRect?) -> (center: CGFloat, halfWidth: CGFloat, distance: CGFloat) {
+        let center = (leftArea.minX + rightArea.maxX) / 2
         let notchCenter = (leftArea.maxX + rightArea.minX) / 2
         let compactHalfWidth = hasSystemIsland ? IslandFootprint.compactSystemWidth / 2 : 0
         let leftBoundary = min(leftArea.maxX, notchCenter - compactHalfWidth, island?.minX ?? leftArea.maxX)
         let rightBoundary = max(rightArea.minX, notchCenter + compactHalfWidth, island?.maxX ?? rightArea.minX)
-        // Negative gaps can tuck into the reported island frame, up to the physical notch.
-        let leftNear = min(leftArea.maxX, leftBoundary - gap)
-        let rightNear = max(rightArea.minX, rightBoundary + gap)
-        let leftLimit = (leftNear - originX) * scale
-        let rightLimit = (rightNear - originX) * scale
-        let leftPixel = floor(min(leftLimit, 2 * centerInPixels - rightLimit))
-        let leftAnchor = originX + leftPixel / scale
-        let rightAnchor = originX + (2 * centerInPixels - leftPixel) / scale
-        let availableWidth = min(leftAnchor - leftArea.minX, rightArea.maxX - rightAnchor) - 8
-        let width = floor(min(availableWidth, requestedSize.width) * scale) / scale
+        let distance = max(center - leftBoundary, rightBoundary - center)
+        return (center, (rightArea.maxX - leftArea.minX) / 2, distance)
+    }
+
+    func gapRange(island: CGRect?) -> ClosedRange<Double> {
+        let geometry = anchorGeometry(island: island)
+        return -Double(geometry.distance)...Double(max(0, geometry.halfWidth - geometry.distance))
+    }
+
+    func balancedLanes(island: CGRect?, scale: CGFloat,
+                       requestedSize: CGSize, gap: CGFloat,
+                       centeredOnAnchor: Bool = false) -> (left: CGRect, right: CGRect)? {
+        let scale = max(1, scale)
+        let geometry = anchorGeometry(island: island)
+        let distance = min(geometry.halfWidth, max(0, geometry.distance + gap))
+        let leftAnchor = (geometry.center - distance) * scale
+        let rightAnchor = (geometry.center + distance) * scale
+        let width = floor(min(geometry.halfWidth, requestedSize.width) * scale) / scale
         let height = floor(min(requestedSize.height, leftArea.height - 2) * scale) / scale
         guard width >= Self.minimumWidth, height >= 5 else { return nil }
 
         let top = leftArea.maxY
         let bottom = leftArea.minY
         let visibleCenter = island.map { (max(bottom, $0.minY) + min(top, $0.maxY)) / 2 } ?? leftArea.midY
-        let idealY = visibleCenter - height / 2
-        let boundedY = min(top - height - 1, max(bottom + 1, idealY))
+        let boundedY = min(top - height - 1, max(bottom + 1, visibleCenter - height / 2))
         let y = top + ((boundedY - top) * scale).rounded() / scale
-        let pair = (
-            left: CGRect(x: leftAnchor - width, y: y, width: width, height: height),
-            right: CGRect(x: rightAnchor, y: y, width: width, height: height)
+
+        // Length changes the extent around a fixed anchor. Screen edges clip the
+        // overflow, so changing length never pushes the anchor back into view.
+        return (
+            CGRect(x: leftAnchor.rounded() / scale - (centeredOnAnchor ? width / 2 : width),
+                   y: y, width: width, height: height),
+            CGRect(x: rightAnchor.rounded() / scale - (centeredOnAnchor ? width / 2 : 0),
+                   y: y, width: width, height: height)
         )
-        guard leftArea.contains(pair.left), rightArea.contains(pair.right) else { return nil }
-        return pair
     }
 }

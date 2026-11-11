@@ -13,7 +13,9 @@
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>NotchBeat</string>
+    <string>Jimbo's Notch</string>
+    <key>CFBundleDisplayName</key>
+    <string>Jimbo's Notch</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -25,10 +27,10 @@
     <key>LSUIElement</key>
     <true/>
     <key>NSAppleEventsUsageDescription</key>
-    <string>NotchBeat reads the currently playing song and cover from Music or Spotify when you enable album cover colors.</string>
+    <string>Jimbo's Notch reads the currently playing song and cover from Music or Spotify when you enable album cover colors.</string>
     <key>NSAudioCaptureUsageDescription</key>
-    <string>NotchBeat analyzes audio playing on this Mac to animate the notch visualizer. Audio is processed locally and is never saved.</string>
+    <string>Jimbo's Notch analyzes audio playing on this Mac to animate the notch visualizer. Audio is processed locally and is never saved.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>NotchBeat uses the microphone to animate the visualizer when you select Microphone. Audio is processed locally and is never saved.</string>
+    <string>Jimbo's Notch uses the microphone to animate the visualizer when you select Microphone. Audio is processed locally and is never saved.</string>
 </dict>
 </plist>

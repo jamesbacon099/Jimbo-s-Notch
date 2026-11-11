@@ -30,6 +30,9 @@ enum VisualizerPalette: String, CaseIterable, Identifiable {
     case ember = "Ember"
     case volt = "Volt"
     case glacier = "Glacier"
+    case sunset = "Sunset"
+    case rave = "Rave"
+    case mint = "Mint"
     case blackAndWhite = "B&W"
     case spectrum = "Spectrum"
 
@@ -37,6 +40,9 @@ enum VisualizerPalette: String, CaseIterable, Identifiable {
 
     var colors: TrailPalette {
         switch self {
+        case .sunset: return TrailPalette(color(0xFF824D), color(0xE83475), color(0xFFDC82))
+        case .rave: return TrailPalette(color(0xFF36DB), color(0x693AFF), color(0x59FFCE))
+        case .mint: return TrailPalette(color(0x8DFFD5), color(0x21BA98), color(0xE8FFF2))
         case .blackAndWhite: return TrailPalette(.white, color(0x292929), color(0xBEBEBE))
         case .spectrum: return TrailPalette(hue: 0.5)
         case .automatic, .albumArt: return TrailPalette(color(0xFFAD5A), color(0x53E9CB), color(0x9E7EFF))
@@ -56,12 +62,54 @@ enum VisualizerPalette: String, CaseIterable, Identifiable {
 
 @MainActor
 final class VisualizerSettings: ObservableObject {
+    @Published var liquidGlassColors: Bool {
+        didSet { defaults.set(liquidGlassColors, forKey: "liquidGlassColors") }
+    }
+
+    @Published var relaxedDance = RelaxedDance.martialArts {
+        didSet { defaults.set(relaxedDance.rawValue, forKey: "relaxedDance") }
+    }
+
+    @Published var dancersPerSide: Int {
+        didSet { defaults.set(dancersPerSide, forKey: "dancersPerSide") }
+    }
+
+    @Published var dancerSparks: Bool {
+        didSet { defaults.set(dancerSparks, forKey: "dancerSparks") }
+    }
+
+    @Published var splashDensity: Double {
+        didSet { defaults.set(splashDensity, forKey: "splashDensity") }
+    }
+
+    @Published var flowFromNotch: Bool {
+        didSet { defaults.set(flowFromNotch, forKey: "fireFromNotch") }
+    }
+
+    @Published var selectedStyle: VisualizerStyle {
+        didSet {
+            guard selectedStyle != oldValue else { return }
+            defaults.set(selectedStyle.rawValue, forKey: "selectedVisualizerStyle")
+            let appearance = Self.loadAppearance(defaults, prefix: effectPrefix)
+            selectedPalette = appearance.palette
+            lastFixedPalette = appearance.fixed
+            spectrumHue = appearance.hue
+            sizing = appearance.sizing
+        }
+    }
+
+    @Published var sizing: TrailSizing {
+        didSet { sizing.saveChanges(from: oldValue, to: defaults, prefix: effectPrefix) }
+    }
+
+    private var effectPrefix: String { "visualizer." + selectedStyle.rawValue + "." }
+
     @Published var selectedPalette: VisualizerPalette {
         didSet {
-            defaults.set(selectedPalette.rawValue, forKey: "selectedPalette")
+            defaults.set(selectedPalette.rawValue, forKey: effectPrefix + "selectedPalette")
             if selectedPalette != .automatic && selectedPalette != .albumArt {
                 lastFixedPalette = selectedPalette
-                defaults.set(selectedPalette.rawValue, forKey: "lastFixedPalette")
+                defaults.set(selectedPalette.rawValue, forKey: effectPrefix + "lastFixedPalette")
             }
         }
     }
@@ -76,12 +124,47 @@ final class VisualizerSettings: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        let savedHue = defaults.object(forKey: "spectrumHue") as? Double ?? 0.5
-        spectrumHue = min(1, max(0, savedHue))
-        let selection = defaults.string(forKey: "selectedPalette").flatMap(VisualizerPalette.init(rawValue:)) ?? .automatic
-        let savedFixed = defaults.string(forKey: "lastFixedPalette").flatMap(VisualizerPalette.init(rawValue:))
-        selectedPalette = selection
-        lastFixedPalette = [.automatic, .albumArt].contains(selection) ? savedFixed ?? .prism : selection
+        dancerSparks = defaults.bool(forKey: "dancerSparks")
+        splashDensity = min(3, max(1, defaults.object(forKey: "splashDensity") as? Double ?? 1))
+        liquidGlassColors = defaults.bool(forKey: "liquidGlassColors")
+        relaxedDance = defaults.string(forKey: "relaxedDance").flatMap { saved in
+            switch saved {
+            case "Standing": return .standing
+            case "Rave headbang", "Rave": return .headbang
+            case "Martial arts flow": return .martialArts
+            default: return RelaxedDance(rawValue: saved)
+            }
+        } ?? .martialArts
+        dancersPerSide = min(5, max(1, defaults.integer(forKey: "dancersPerSide")))
+        flowFromNotch = defaults.object(forKey: "fireFromNotch") as? Bool ?? true
+        let style: VisualizerStyle = defaults.string(forKey: "selectedVisualizerStyle")
+            .flatMap { saved in
+                switch saved {
+                case "Mist", "Water": return .dancers
+                case "Inferno": return .splash
+                case "Aurora", "Lightning": return .arcade
+                case "Orbit": return .pulse
+                default: return VisualizerStyle(rawValue: saved)
+                }
+            } ?? .classic
+        selectedStyle = style
+        let appearance = Self.loadAppearance(defaults, prefix: "visualizer." + style.rawValue + ".")
+        spectrumHue = appearance.hue
+        selectedPalette = appearance.palette
+        lastFixedPalette = appearance.fixed
+        sizing = appearance.sizing
+    }
+
+    private static func loadAppearance(_ defaults: UserDefaults, prefix: String)
+        -> (palette: VisualizerPalette, fixed: VisualizerPalette, hue: Double, sizing: TrailSizing) {
+        func value(_ key: String) -> Any? {
+            defaults.object(forKey: prefix + key) ?? defaults.object(forKey: key)
+        }
+        let palette = (value("selectedPalette") as? String).flatMap(VisualizerPalette.init(rawValue:)) ?? .automatic
+        let savedFixed = (value("lastFixedPalette") as? String).flatMap(VisualizerPalette.init(rawValue:))
+        let fixed = [.automatic, .albumArt].contains(palette) ? savedFixed ?? .prism : palette
+        let hue = min(1, max(0, value("spectrumHue") as? Double ?? 0.5))
+        return (palette, fixed, hue, TrailSizing(defaults: defaults, prefix: prefix))
     }
 
     func setAutoColor(_ enabled: Bool) {
@@ -92,12 +175,16 @@ final class VisualizerSettings: ObservableObject {
         let hue = min(1, max(0, hue))
         if spectrumHue != hue { spectrumHue = hue }
         if selectedPalette != .spectrum { selectedPalette = .spectrum }
-        if persist { defaults.set(hue, forKey: "spectrumHue") }
+        if persist { defaults.set(hue, forKey: effectPrefix + "spectrumHue") }
     }
 
-    func updateArtwork(listening: Bool, source: AudioMonitor.AudioSource) {
+    func setArtworkColors(_ colors: [UInt32]?) {
+        if artworkColors != colors { artworkColors = colors }
+    }
+
+    func updateArtwork(source: AudioMonitor.AudioSource) {
         var players: [AlbumArtwork.Player] = []
-        if listening && selectedPalette == .albumArt {
+        if selectedPalette == .albumArt {
             switch source {
             case .system: players = AlbumArtwork.Player.allCases
             case .application(let app): players = AlbumArtwork.Player.allCases.filter { $0.rawValue == app.bundleID }
@@ -135,8 +222,10 @@ final class VisualizerSettings: ObservableObject {
         }
     }
 
-    var basePalette: TrailPalette {
-        if selectedPalette == .albumArt, let artworkColors, let first = artworkColors.first {
+    var basePalette: TrailPalette { palette(for: selectedPalette, hue: spectrumHue) }
+
+    func palette(for selection: VisualizerPalette, hue: Double) -> TrailPalette {
+        if selection == .albumArt, let artworkColors, let first = artworkColors.first {
             func visible(_ key: UInt32, floor: Double) -> Color {
                 let r = Double(key >> 16)
                 let g = Double((key >> 8) & 255)
@@ -150,7 +239,7 @@ final class VisualizerSettings: ObservableObject {
                                 visible(artworkColors.dropFirst().first ?? first, floor: 120),
                                 visible(artworkColors.dropFirst(2).first ?? first, floor: 225))
         }
-        return selectedPalette == .spectrum ? TrailPalette(hue: spectrumHue) : selectedPalette.colors
+        return selection == .spectrum ? TrailPalette(hue: hue) : selection.colors
     }
 
     func palette(for frame: AudioFrame) -> TrailPalette {
