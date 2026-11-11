@@ -3,7 +3,7 @@
 Jimbo’s Notch Buddy combines a notch music player and audio visualizers in one macOS menu bar app. It builds on the original [NotchBeat](https://github.com/kboss007/NotchBeat) visualizer.
 
 - **Music Monitor** shows Apple Music or Spotify artwork, a live frequency meter, playback controls, a timeline, and app volume. The player and meter have independent color options.
-- **Visualizer** includes Default, Dancers, Fire, Splash, Equalizer, Arcade, Pulse, Laser, Rainfall, Ripple, Meteor, Vortex, Circuit, Synth Grid, and City Lights. Each effect remembers its palette and trail sizing.
+- **Visualizer** includes Default, Dancers, Plasma, Splash, Equalizer, Arcade, Pulse, Laser, Rainfall, Ripple, Meteor, Vortex, Circuit, Synth Grid, and City Lights. Each effect remembers its palette and trail sizing.
 - The player and visualizer move together as the player expands. You can choose click or hover to expand the player.
 
 ## Download for macOS

@@ -293,6 +293,6 @@ private struct TrailView: View {
                                dancersPerSide: settings.dancersPerSide, relaxedDance: settings.relaxedDance,
                                channel: channel, time: reduceMotion ? 0 : time,
                                palette: settings.palette(for: frame), side: side, mirrored: frame.mode == .mono,
-                               lowPower: audio.lowPower, innerInset: fire && fromNotch ? 0 : 2, glassFade: settings.liquidGlassColors, splashDensity: settings.splashDensity, dancerSparks: settings.dancerSparks, dancerThickness: settings.dancerThickness, rainfallFromNotch: settings.rainfallFromNotch, rainfallDensity: settings.rainfallDensity, laserThickness: settings.laserThickness, effectMotion: settings.effectMotion)
+                               lowPower: audio.lowPower, innerInset: fire && fromNotch ? 0 : 2, glassFade: settings.liquidGlassColors, splashDensity: settings.splashDensity, dancerSparks: settings.dancerSparks, dancerThickness: settings.dancerThickness, rainfallFromNotch: settings.rainfallFromNotch, rainfallDensity: settings.rainfallDensity, laserThickness: settings.laserThickness, effectMotion: settings.effectMotion, plasmaSparks: settings.plasmaSparks)
     }
 }

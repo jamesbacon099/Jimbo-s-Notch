@@ -60,7 +60,7 @@ struct NotchBeatControls: View {
             } else {
                 Picker("Visualizer", selection: $settings.selectedStyle) {
                     ForEach(VisualizerStyle.allCases) { style in
-                        Text(style.rawValue).tag(style)
+                        Text(style.displayName).tag(style)
                     }
                 }
                 .pickerStyle(.menu)
@@ -83,6 +83,9 @@ struct NotchBeatControls: View {
                     Slider(value: $settings.splashDensity, in: 1...3) { Text("Splash density") }
                 }
                 if settings.selectedStyle == .fire {
+                    Slider(value: $settings.plasmaSparks.size, in: 0.35...3) { Text("Spark size") }
+                    Slider(value: $settings.plasmaSparks.density, in: 0...3) { Text("Spark density") }
+                        .help("Move all the way left to turn sparks off.")
                     Toggle("Flow from notch", isOn: $settings.flowFromNotch)
                         .toggleStyle(.switch)
                         .controlSize(.small)

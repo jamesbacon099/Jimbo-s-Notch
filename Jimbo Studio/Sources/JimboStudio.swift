@@ -49,7 +49,7 @@ private final class Studio: ObservableObject {
                       green: Double((rgb >> 8) & 255) / 255,
                       blue: Double(rgb & 255) / 255)
             }
-            return colors?.palette.first.map(color)
+            return colors?.palette.classic.first.map(color)
         }
         let frames = audio.frames
         let musicFrames = spectrum.frames
@@ -197,12 +197,13 @@ private struct PlayerSpectrum: View {
     var useAlbumArt = true
     var large = false
 
-    private var gradient: [Color] {
+    private var gradient: Gradient {
         if useAlbumArt, colors.selection == .albumArt, settings.artworkColors != nil {
-            return settings.palette(for: .albumArt, hue: colors.hue).colors
+            let palette = settings.palette(for: .albumArt, hue: colors.hue)
+            return palette.coverGradient ?? Gradient(colors: palette.colors)
         }
         let tint = colors.tint(settings: settings, frame: frames.current, useAlbumArt: useAlbumArt)
-        return [tint, tint]
+        return Gradient(colors: [tint, tint])
     }
 
     var body: some View {
@@ -219,7 +220,7 @@ private struct PlayerSpectrum: View {
             }
         }
         bars.overlay {
-            LinearGradient(colors: gradient, startPoint: .leading, endPoint: .trailing)
+            LinearGradient(gradient: gradient, startPoint: .leading, endPoint: .trailing)
         }
         .mask { bars }
         .accessibilityLabel("Live audio spectrum")

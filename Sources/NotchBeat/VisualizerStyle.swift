@@ -9,6 +9,11 @@ enum RelaxedDance: String, CaseIterable {
     case slowdance = "Slowdancing"
 }
 
+struct PlasmaSparks {
+    var size = 1.0
+    var density = 1.0
+}
+
 struct EffectMotion {
     var speed = 1.0
     var density = 1.0
@@ -33,6 +38,7 @@ enum VisualizerStyle: String, CaseIterable, Identifiable {
     case cityLights = "City Lights"
 
     var id: String { rawValue }
+    var displayName: String { self == .fire ? "Plasma" : rawValue }
 
     var hasDensityAndDirection: Bool {
         [.meteor, .vortex, .circuit, .synthGrid, .cityLights].contains(self)
@@ -58,7 +64,7 @@ enum VisualizerStyle: String, CaseIterable, Identifiable {
         case .circuit: return "Layered circuit traces light up as signals run along them."
         case .synthGrid: return "Audio lifts the lines of a scrolling neon grid."
         case .cityLights: return "A scrolling skyline lights up with the music."
-        case .fire: return "Dancing flames and rising sparks react to the beat."
+        case .fire: return "Plasma streams and sparks react to the beat."
         }
     }
 }
@@ -83,10 +89,11 @@ struct VisualizerTrail: View {
     var rainfallDensity = 1.0
     var laserThickness = 1.0
     var effectMotion = EffectMotion()
+    var plasmaSparks = PlasmaSparks()
 
     var body: some View {
         if glassFade {
-            artwork.mask {
+            coloredArtwork.mask {
                 LinearGradient(stops: [
                     .init(color: .black, location: 0),
                     .init(color: .black, location: 0.85),
@@ -94,6 +101,18 @@ struct VisualizerTrail: View {
                 ], startPoint: side == .left ? .trailing : .leading,
                    endPoint: side == .left ? .leading : .trailing)
             }
+        } else {
+            coloredArtwork
+        }
+    }
+
+    @ViewBuilder
+    private var coloredArtwork: some View {
+        if let gradient = palette.coverGradient {
+            LinearGradient(gradient: gradient,
+                           startPoint: side == .left ? .trailing : .leading,
+                           endPoint: side == .left ? .leading : .trailing)
+                .mask { artwork }
         } else {
             artwork
         }
@@ -612,7 +631,7 @@ struct VisualizerTrail: View {
     private func drawFromNotch(in context: GraphicsContext, size: CGSize, phase: Double) {
         let availableWidth = max(1, size.width - innerInset - 4)
         let renderer = VisualizerTrail(style: style, channel: channel, time: time, palette: palette,
-                                      side: .right, mirrored: mirrored, lowPower: lowPower, innerInset: 0, splashDensity: splashDensity)
+                                      side: .right, mirrored: mirrored, lowPower: lowPower, innerInset: 0, splashDensity: splashDensity, plasmaSparks: plasmaSparks)
         if style == .splash {
             var rotated = context
             if side == .left {
@@ -674,16 +693,24 @@ struct VisualizerTrail: View {
                                   palette.secondary.opacity(0.05)]),
                 startPoint: CGPoint(x: centerX, y: baseline),
                 endPoint: CGPoint(x: centerX + lean, y: baseline - height)))
-            if !lowPower && index.isMultiple(of: 3) {
-                let cycle = phase * 0.65 + seed
-                let age = cycle - floor(cycle)
-                let radius = max(0.5, size.height * 0.022)
-                let spark = CGRect(x: centerX + sin(seed + age * 4) * halfWidth,
-                                   y: baseline - age * size.height * 0.8,
-                                   width: radius * 2, height: radius * 2)
-                context.fill(Path(ellipseIn: spark),
-                             with: .color(palette.colors[index % 3].opacity(sin(age * .pi) * (level + impact) * 0.6)))
-            }
+        }
+
+        let sparkCount = Int((Double(lowPower ? 5 : 11) * plasmaSparks.density).rounded())
+        guard sparkCount > 0 else { return }
+        for index in 0..<sparkCount {
+            let seed = Double(index) * 2.39996
+            let progress = (Double(index) + 0.5) / Double(sparkCount)
+            let cycle = phase * 0.65 + seed
+            let age = cycle - floor(cycle)
+            let radius = max(0.5, min(size.height, size.width) * 0.026) * plasmaSparks.size
+            let center = x(progress, size: size)
+            let dx = sin(seed + age * 4) * size.width * 0.025
+            let spark = CGRect(x: center + dx - radius,
+                               y: baseline - age * size.height * 0.8 - radius,
+                               width: radius * 2, height: radius * 2)
+            let opacity = sin(age * .pi) * min(1, 0.20 + (level + impact) * 0.60)
+            context.fill(Path(ellipseIn: spark),
+                         with: .color(palette.colors[index % 3].opacity(opacity)))
         }
     }
 }

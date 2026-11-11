@@ -35,6 +35,12 @@ struct PaletteChooser: View {
             .controlSize(.small)
             .font(.caption)
 
+            Toggle("Proportional album colors", isOn: $settings.proportionalAlbumColors)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .font(.caption)
+                .help("Give each album color space based on how much of the cover it occupies.")
+
             if settings.selectedPalette == .albumArt {
                 Text(settings.artworkColors == nil ? "Using Rainbow until artwork is available." : "Using album cover colors.")
                     .font(.caption)

@@ -8,10 +8,20 @@ enum AlbumArtwork {
         case spotify = "com.spotify.client"
     }
 
+    struct Swatch: Equatable {
+        let rgb: UInt32
+        let weight: Double
+    }
+
+    struct ColorSet: Equatable {
+        let classic: [UInt32]
+        let proportional: [Swatch]
+    }
+
     struct Track {
         let player: Player
         let id: String
-        let colors: [UInt32]?
+        let colors: ColorSet?
     }
 
     static func read(_ player: Player, previous: Track?) async -> Track? {
@@ -108,11 +118,11 @@ enum AlbumArtwork {
         return result
     }
 
-    static func palette(_ data: Data) -> [UInt32]? {
+    static func palette(_ data: Data) -> ColorSet? {
         colors(from: data)?.palette
     }
 
-    static func colors(from data: Data) -> (palette: [UInt32], brightest: UInt32?)? {
+    static func colors(from data: Data) -> (palette: ColorSet, brightest: UInt32?)? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -136,7 +146,6 @@ enum AlbumArtwork {
         }
 
         var buckets: [Int: Bucket] = [:]
-        var pixelCount = 0
         for offset in stride(from: 0, to: 6400, by: 4) where pixels[offset + 3] > 220 {
             let alpha = Int(pixels[offset + 3])
             let r = Int(pixels[offset]) * 255 / alpha
@@ -149,25 +158,46 @@ enum AlbumArtwork {
             bucket.green += g
             bucket.blue += b
             buckets[key] = bucket
-            pixelCount += 1
         }
 
-        var colors: [UInt32] = []
+        func distance(_ a: UInt32, _ b: UInt32) -> Int {
+            abs(Int(a >> 16) - Int(b >> 16))
+            + abs(Int((a >> 8) & 255) - Int((b >> 8) & 255))
+            + abs(Int(a & 255) - Int(b & 255))
+        }
         let ranked = buckets.values.sorted { left, right in
             left.count == right.count ? left.color < right.color : left.count > right.count
         }
+        let pixelCount = ranked.reduce(0) { $0 + $1.count }
+        var classic: [UInt32] = []
         for bucket in ranked {
-            if !colors.isEmpty && bucket.count * 100 < pixelCount * 3 { break }
-            let color = bucket.color
-            let r = Int(color >> 16)
-            let g = Int((color >> 8) & 255)
-            let b = Int(color & 255)
-            guard colors.allSatisfy({
-                abs(Int($0 >> 16) - r) + abs(Int(($0 >> 8) & 255) - g) + abs(Int($0 & 255) - b) >= 85
-            }) else { continue }
-            colors.append(color)
-            if colors.count == 3 { break }
+            if !classic.isEmpty && bucket.count * 100 < pixelCount * 3 { break }
+            guard classic.allSatisfy({ distance($0, bucket.color) >= 85 }) else { continue }
+            classic.append(bucket.color)
+            if classic.count == 3 { break }
         }
+        // Pool nearby shades before ranking so a dominant color with many
+        // slightly different shades still occupies its share of the palette.
+        var groups: [Bucket] = []
+        for bucket in ranked {
+            let nearest = groups.indices.min {
+                distance(groups[$0].color, bucket.color) < distance(groups[$1].color, bucket.color)
+            }
+            if let nearest, distance(groups[nearest].color, bucket.color) < 85 {
+                groups[nearest].count += bucket.count
+                groups[nearest].red += bucket.red
+                groups[nearest].green += bucket.green
+                groups[nearest].blue += bucket.blue
+            } else {
+                groups.append(bucket)
+            }
+        }
+        let dominant = groups.sorted {
+            $0.count == $1.count ? $0.color < $1.color : $0.count > $1.count
+        }.prefix(3)
+        let total = dominant.reduce(0) { $0 + $1.count }
+        guard total > 0 else { return nil }
+        let colors = dominant.map { Swatch(rgb: $0.color, weight: Double($0.count) / Double(total)) }
         func luminance(_ rgb: UInt32) -> Double {
             func linear(_ component: UInt32) -> Double {
                 let value = Double(component & 255) / 255
@@ -178,6 +208,6 @@ enum AlbumArtwork {
         let brightest = ranked.lazy.filter { $0.count >= 2 }.map(\.color)
             .filter { luminance($0) >= 0.175 }
             .max { luminance($0) < luminance($1) }
-        return colors.isEmpty ? nil : (colors, brightest)
+        return (ColorSet(classic: classic, proportional: colors), brightest)
     }
 }

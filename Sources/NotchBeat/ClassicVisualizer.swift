@@ -124,7 +124,7 @@ private struct ClassicVisualizer {
             let radius = (1.2 + level * 1.0 + hit * 1.0) * fade * scale
             dot(in: context, at: point, radius: radius * 2, color: color.opacity(brightness * fade * 0.18))
             dot(in: context, at: point, radius: radius, color: color.opacity(brightness * fade))
-            if tail == 0 { dot(in: context, at: point, radius: radius * 0.46, color: .white.opacity(brightness)) }
+            if tail == 0 { dot(in: context, at: point, radius: radius * 0.46, color: palette.sparkleHighlight.opacity(brightness)) }
         }
     }
 
@@ -149,7 +149,7 @@ private struct ClassicVisualizer {
             let progress = 0.08 + age * 0.84
             let rise = (1.5 + age * 6) * sin(seed * 17) * (0.6 + hit * 0.4) * (size.height / 21)
             let point = CGPoint(x: x(progress, width: size.width), y: size.height / 2 + rise)
-            let color = index.isMultiple(of: 3) ? Color.white : tint
+            let color = index.isMultiple(of: 3) ? palette.sparkleHighlight : tint
             dot(in: context, at: point, radius: (0.45 + brightness * 0.85) * scale, color: color.opacity(brightness))
         }
     }
@@ -165,7 +165,7 @@ private struct ClassicVisualizer {
             let head = 0.06 + age * 0.88
             let point = ribbonPoint(head, strand: strand, size: size)
             dot(in: context, at: point, radius: 5 * scale, color: tint.opacity(light * 0.28))
-            dot(in: context, at: point, radius: 1.7 * scale, color: .white.opacity(light))
+            dot(in: context, at: point, radius: 1.7 * scale, color: palette.sparkleHighlight.opacity(light))
         }
     }
 

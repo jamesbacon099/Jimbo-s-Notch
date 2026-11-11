@@ -5,6 +5,8 @@ struct TrailPalette {
     let primary: Color
     let secondary: Color
     let highlight: Color
+    var coverGradient: Gradient? = nil
+    var sparkleHighlight: Color = .white
 
     var colors: [Color] { [primary, secondary, highlight] }
 
@@ -34,6 +36,8 @@ enum VisualizerPalette: String, CaseIterable, Identifiable {
     case rave = "Rave"
     case mint = "Mint"
     case blackAndWhite = "B&W"
+    case allWhite = "All White"
+    case allBlack = "All Black"
     case spectrum = "Spectrum"
 
     var id: String { rawValue }
@@ -44,6 +48,11 @@ enum VisualizerPalette: String, CaseIterable, Identifiable {
         case .sunset: return TrailPalette(color(0xFF824D), color(0xE83475), color(0xFFDC82))
         case .rave: return TrailPalette(color(0xFF36DB), color(0x693AFF), color(0x59FFCE))
         case .mint: return TrailPalette(color(0x8DFFD5), color(0x21BA98), color(0xE8FFF2))
+        case .allWhite: return TrailPalette(.white, .white, .white)
+        case .allBlack:
+            var palette = TrailPalette(.black, .black, .black)
+            palette.sparkleHighlight = .black
+            return palette
         case .blackAndWhite: return TrailPalette(.white, color(0x292929), color(0xBEBEBE))
         case .spectrum: return TrailPalette(hue: 0.5)
         case .automatic, .albumArt: return TrailPalette(color(0xFFAD5A), color(0x53E9CB), color(0x9E7EFF))
@@ -115,6 +124,17 @@ final class VisualizerSettings: ObservableObject {
                             reversed: values["reversed"] as? Bool ?? false)
     }
 
+    @Published var plasmaSparks: PlasmaSparks {
+        didSet {
+            defaults.set(plasmaSparks.size, forKey: "plasmaSparkSize")
+            defaults.set(plasmaSparks.density, forKey: "plasmaSparkDensity")
+        }
+    }
+
+    @Published var proportionalAlbumColors: Bool {
+        didSet { defaults.set(proportionalAlbumColors, forKey: "proportionalAlbumColors") }
+    }
+
     @Published var keepColorSettings: Bool {
         didSet {
             guard keepColorSettings != oldValue else { return }
@@ -167,7 +187,7 @@ final class VisualizerSettings: ObservableObject {
 
     @Published private(set) var spectrumHue: Double
 
-    @Published private(set) var artworkColors: [UInt32]?
+    @Published private(set) var artworkColors: AlbumArtwork.ColorSet?
     private var artworkTask: Task<Void, Never>?
     private var artworkPlayers: [AlbumArtwork.Player] = []
     private let defaults: UserDefaults
@@ -175,6 +195,11 @@ final class VisualizerSettings: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        plasmaSparks = PlasmaSparks(
+            size: min(3, max(0.35, defaults.object(forKey: "plasmaSparkSize") as? Double ?? 1)),
+            density: min(3, max(0, defaults.object(forKey: "plasmaSparkDensity") as? Double ?? 1))
+        )
+        proportionalAlbumColors = defaults.bool(forKey: "proportionalAlbumColors")
         let sharesColors = defaults.bool(forKey: "keepColorSettings")
         keepColorSettings = sharesColors
         rainfallFromNotch = defaults.bool(forKey: "rainfallFromNotch")
@@ -238,7 +263,7 @@ final class VisualizerSettings: ObservableObject {
         if persist { defaults.set(hue, forKey: colorPrefix + "spectrumHue") }
     }
 
-    func setArtworkColors(_ colors: [UInt32]?) {
+    func setArtworkColors(_ colors: AlbumArtwork.ColorSet?) {
         if artworkColors != colors { artworkColors = colors }
     }
 
@@ -285,7 +310,7 @@ final class VisualizerSettings: ObservableObject {
     var basePalette: TrailPalette { palette(for: selectedPalette, hue: spectrumHue) }
 
     func palette(for selection: VisualizerPalette, hue: Double) -> TrailPalette {
-        if selection == .albumArt, let artworkColors, let first = artworkColors.first {
+        if selection == .albumArt, let artworkColors, let first = artworkColors.classic.first {
             func visible(_ key: UInt32, floor: Double) -> Color {
                 let r = Double(key >> 16)
                 let g = Double((key >> 8) & 255)
@@ -295,9 +320,25 @@ final class VisualizerSettings: ObservableObject {
                 let gain = max(1, floor / peak)
                 return Color(red: r * gain / 255, green: g * gain / 255, blue: b * gain / 255)
             }
-            return TrailPalette(visible(first, floor: 170),
-                                visible(artworkColors.dropFirst().first ?? first, floor: 120),
-                                visible(artworkColors.dropFirst(2).first ?? first, floor: 225))
+            guard proportionalAlbumColors, !artworkColors.proportional.isEmpty else {
+                return TrailPalette(visible(first, floor: 170),
+                                    visible(artworkColors.classic.dropFirst().first ?? first, floor: 120),
+                                    visible(artworkColors.classic.dropFirst(2).first ?? first, floor: 225))
+            }
+            let swatches = artworkColors.proportional
+            let colors = swatches.map { visible($0.rgb, floor: 108) }
+            var stops: [Gradient.Stop] = []
+            var position = 0.0
+            for (index, swatch) in swatches.enumerated() {
+                let end = min(1, position + swatch.weight)
+                let softEdge = min(0.04, swatch.weight * 0.16)
+                stops.append(.init(color: colors[index], location: index == 0 ? 0 : position + softEdge))
+                stops.append(.init(color: colors[index], location: index == colors.count - 1 ? 1 : end - softEdge))
+                position = end
+            }
+            var palette = TrailPalette(colors[0], colors.dropFirst().first ?? colors[0], colors.last ?? colors[0])
+            palette.coverGradient = Gradient(stops: stops)
+            return palette
         }
         return selection == .spectrum ? TrailPalette(hue: hue) : selection.colors
     }
