@@ -6,16 +6,22 @@ Jimbo’s Notch Buddy combines a notch music player and audio visualizers in one
 - **Visualizer** includes Default, Dancers, Fire, Splash, Equalizer, Arcade, and Pulse. Each effect remembers its palette and trail sizing.
 - The player and visualizer move together as the player expands. You can choose click or hover to expand the player.
 
+## Download for macOS
+
+Download **Jimbos-Notch-Buddy-macOS-arm64.zip** from the [latest release](https://github.com/jamesbacon099/Jimbo-s-Notch/releases/latest), unzip it, and move **Jimbo’s Notch Buddy.app** into Applications. The download is for Apple Silicon Macs. Intel Macs can build from source.
+
+Open **Jimbo’s Notch Buddy** and click its waveform icon in the menu bar. Choose the **Music Monitor** tab. The standalone **Jimbo’s Notch** app only contains the visualizer.
+
 ## Build on macOS
 
 The apps require macOS 14.2 or later and the Xcode command line tools. Run the scripts from the repository root:
 
 ```sh
-# Combined app
-./"Jimbo Studio"/build-app.sh
+# Combined app with Music Monitor and Visualizer
+./build-app.sh
 
 # Standalone visualizer
-./build-app.sh
+./build-visualizer.sh
 
 # Standalone music player
 ./"Jimbo Music"/build-app.sh
