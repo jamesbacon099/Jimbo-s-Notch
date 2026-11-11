@@ -150,7 +150,7 @@ struct NotchBeatControls: View {
             sizeSlider("Length", value: $overlay.sizing.length, range: TrailSizing.lengthRange)
             sizeSlider("Height", value: $overlay.sizing.height, range: TrailSizing.heightRange)
             sizeSlider("Notch gap", value: $overlay.sizing.gap, range: TrailSizing.gapRange)
-                .help("Use a negative value to bring both trails closer to the island. The default is 15 points.")
+                .help("Negative values move both trails inward. The physical notch limits how close they can get.")
 
             if overlay.isCrowded {
                 Text("Waiting for enough room on both sides.")

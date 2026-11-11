@@ -7,7 +7,7 @@ enum TrailSide: CaseIterable {
 struct TrailSizing: Equatable {
     static let lengthRange = 38.0...720.0
     static let heightRange = 5.0...42.0
-    static let gapRange = -12.0...100.0
+    static let gapRange = -100.0...100.0
     static let defaultGap = 15.0
     var length: Double
     var height: Double

@@ -17,6 +17,7 @@ enum IslandFootprint {
     struct Window {
         let frame: CGRect
         let level: Int
+        var ownerName: String? = nil
     }
 
     static func current(in space: MenuBarSpace) -> CGRect? {
@@ -34,7 +35,8 @@ enum IslandFootprint {
                   let width = bounds["Width"], let height = bounds["Height"] else { return nil }
             return Window(
                 frame: CGRect(x: x, y: space.windowOriginY - y - height, width: width, height: height),
-                level: level
+                level: level,
+                ownerName: info[kCGWindowOwnerName as String] as? String
             )
         }
         return footprint(in: space, windows: candidates)
@@ -51,6 +53,10 @@ enum IslandFootprint {
         let minimumWidth = space.hasSystemIsland
             ? max(compactSystemWidth, rightEdge - leftEdge) * 0.65
             : rightEdge - leftEdge - 8
+        let barHeight = space.leftArea.height
+        let compactExtension = barHeight * 1.25
+        let compactArea = CGRect(x: leftEdge - compactExtension, y: barBottom,
+                                 width: rightEdge - leftEdge + 2 * compactExtension, height: barHeight)
 
         // A notch overlay sits at the top edge, straddles the camera, and takes up
         // only part of the screen. Ignore normal app windows and the full menu bar.
@@ -64,7 +70,17 @@ enum IslandFootprint {
                   abs(rect.midX - center) <= min(65, rect.width * 0.18),
                   abs(rect.maxY - barTop) <= 12, rect.maxY > barBottom,
                   rect.minY < barTop - 7 else { return footprint }
-            return footprint?.union(rect) ?? rect
+            let bounds: CGRect
+            if space.hasSystemIsland {
+                bounds = rect
+            } else if window.ownerName == "NotchBox" {
+                // Its compact controls can occupy only part of a much wider transparent window.
+                bounds = rect.intersection(compactArea)
+            } else {
+                guard rect.width <= compactArea.width, rect.height <= barHeight * 2 else { return footprint }
+                bounds = rect
+            }
+            return footprint?.union(bounds) ?? bounds
         }
     }
 }
