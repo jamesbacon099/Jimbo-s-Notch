@@ -63,7 +63,8 @@ final class NotchOverlayController: ObservableObject {
         panel.level = .statusBar
         panel.hidesOnDeactivate = false
         panel.ignoresMouseEvents = true
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenNone, .stationary, .ignoresCycle]
+        panel.collectionBehavior = [.canJoinAllSpaces, .canJoinAllApplications, .fullScreenAuxiliary,
+                                    .stationary, .ignoresCycle]
         panel.contentView = NSHostingView(rootView: TrailView(audio: audio, frames: audio.frames, equalizerFrames: musicSpectrumFrames ?? audio.frames, settings: settings, side: side))
         return panel
     }
@@ -93,8 +94,7 @@ final class NotchOverlayController: ObservableObject {
     }
 
     private func refresh() {
-        guard NSMenu.menuBarVisible(),
-              let primary = NSScreen.screens.first,
+        guard let primary = NSScreen.screens.first,
               let screen = preferredScreen else {
             setCrowded(false)
             hide()

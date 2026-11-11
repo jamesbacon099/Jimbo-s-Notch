@@ -245,7 +245,7 @@ final class MusicIsland: NSObject {
             if !inside && model.expanded { model.expanded = false }
             pointerWasInside = inside
         }
-        guard model.visible, NSMenu.menuBarVisible(),
+        guard model.visible,
               let screen = sharedScreen?() ?? NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main else {
             resizeTimer?.invalidate()
             resizeTimer = nil
@@ -347,7 +347,8 @@ final class MusicIsland: NSObject {
         window.hasShadow = false
         window.hidesOnDeactivate = false
         window.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
-        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenNone, .stationary, .ignoresCycle]
+        window.collectionBehavior = [.canJoinAllSpaces, .canJoinAllApplications, .fullScreenAuxiliary,
+                                     .stationary, .ignoresCycle]
         let hostingView = NSHostingView(rootView: IslandView(model: model, compactHeight: compactHeight,
                                                             cutoutWidth: cutoutWidth, spectrumView: spectrumView))
         hostingView.sizingOptions = []
