@@ -85,13 +85,17 @@ struct MenuBarSpace: Equatable, Sendable {
 
     func balancedLanes(island: CGRect?, scale: CGFloat,
                        requestedSize: CGSize, gap: CGFloat, verticalOffset: CGFloat = 0,
-                       centeredOnAnchor: Bool = false) -> (left: CGRect, right: CGRect)? {
+                       centeredOnAnchor: Bool = false, fillToEdges: Bool = false) -> (left: CGRect, right: CGRect)? {
         let scale = max(1, scale)
         let geometry = anchorGeometry(island: island)
         let distance = min(geometry.halfWidth, max(0, geometry.distance + gap))
         let leftAnchor = (geometry.center - distance) * scale
         let rightAnchor = (geometry.center + distance) * scale
-        let width = floor(min(geometry.halfWidth, requestedSize.width) * scale) / scale
+        let availableWidth = geometry.halfWidth - distance
+        let widthLimit = fillToEdges
+            ? max(Self.minimumWidth, availableWidth * (centeredOnAnchor ? 2 : 1))
+            : min(geometry.halfWidth, requestedSize.width)
+        let width = floor(widthLimit * scale) / scale
         let height = floor(requestedSize.height * scale) / scale
         guard width >= Self.minimumWidth, height >= 5 else { return nil }
 

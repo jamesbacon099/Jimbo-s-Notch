@@ -20,6 +20,9 @@ final class NotchOverlayController: ObservableObject {
     private var islandProbeRunning = false
     private var islandProbeRevision = 0
     private var nextIslandProbe: TimeInterval = 0
+    private var fullScreenDisplay: CGRect?
+    private var nextFullScreenProbe: TimeInterval = 0
+    private var hasFullScreenWindow = false
     private var panels: [TrailSide: NSPanel] = [:]
 
     init(audio: AudioMonitor, usesIntegratedPlayer: Bool = false, musicSpectrumFrames: AudioFrames? = nil) {
@@ -48,6 +51,7 @@ final class NotchOverlayController: ObservableObject {
         NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.activeSpaceDidChangeNotification)
             .merge(with: NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification))
             .sink { [weak self] _ in
+                self?.nextFullScreenProbe = 0
                 self?.resetIslandProbe()
                 self?.hide()
             }
@@ -120,7 +124,9 @@ final class NotchOverlayController: ObservableObject {
         guard let pair = space.balancedLanes(island: footprint, scale: screen.backingScaleFactor,
                                              requestedSize: settings.sizing.requestedSize, gap: gap,
                                              verticalOffset: settings.sizing.verticalOffset,
-                                             centeredOnAnchor: settings.selectedStyle == .fire) else {
+                                             centeredOnAnchor: settings.selectedStyle == .fire,
+                                             fillToEdges: settings.maximizeLengthInFullScreen
+                                                && isFullScreen(on: screen, originY: primary.frame.maxY)) else {
             setCrowded(true)
             hide()
             return
@@ -129,6 +135,38 @@ final class NotchOverlayController: ObservableObject {
         if fittedSize != pair.left.size { fittedSize = pair.left.size }
         place(.left, frame: pair.left)
         place(.right, frame: pair.right)
+    }
+
+    private func isFullScreen(on screen: NSScreen, originY: CGFloat) -> Bool {
+        let display = screen.frame
+        let now = ProcessInfo.processInfo.systemUptime
+        if display == fullScreenDisplay && now < nextFullScreenProbe { return hasFullScreenWindow }
+        fullScreenDisplay = display
+        nextFullScreenProbe = now + 0.45
+
+        // A native full-screen window can start below the physical notch.
+        let contentTop = display.maxY - screen.safeAreaInsets.top
+        let ownPID = Int(ProcessInfo.processInfo.processIdentifier)
+        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
+                                                 kCGNullWindowID) as? [[String: Any]] ?? []
+        hasFullScreenWindow = windows.contains { info in
+            guard let pid = info[kCGWindowOwnerPID as String] as? Int, pid != ownPID,
+                  let level = info[kCGWindowLayer as String] as? Int,
+                  level == CGWindowLevelForKey(.normalWindow),
+                  let alpha = info[kCGWindowAlpha as String] as? Double, alpha > 0.01,
+                  let bounds = info[kCGWindowBounds as String] as? [String: CGFloat],
+                  let x = bounds["X"], let y = bounds["Y"],
+                  let width = bounds["Width"], let height = bounds["Height"] else { return false }
+
+            let frame = CGRect(x: x, y: originY - y - height, width: width, height: height)
+            let tolerance: CGFloat = 2
+            return abs(frame.minX - display.minX) <= tolerance
+                && abs(frame.maxX - display.maxX) <= tolerance
+                && abs(frame.minY - display.minY) <= tolerance
+                && frame.maxY >= contentTop - tolerance
+                && frame.maxY <= display.maxY + tolerance
+        }
+        return hasFullScreenWindow
     }
 
     private func updateIslandBounds(in space: MenuBarSpace) {

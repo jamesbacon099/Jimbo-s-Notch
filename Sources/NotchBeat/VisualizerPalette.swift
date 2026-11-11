@@ -173,6 +173,10 @@ final class VisualizerSettings: ObservableObject {
         }
     }
 
+    @Published var maximizeLengthInFullScreen: Bool {
+        didSet { defaults.set(maximizeLengthInFullScreen, forKey: "maximizeLengthInFullScreen") }
+    }
+
     @Published var sizing: TrailSizing {
         didSet { sizing.saveChanges(from: oldValue, to: defaults, prefix: effectPrefix) }
     }
@@ -242,6 +246,7 @@ final class VisualizerSettings: ObservableObject {
         spectrumHue = colors.hue
         selectedPalette = colors.palette
         lastFixedPalette = colors.fixed
+        maximizeLengthInFullScreen = defaults.bool(forKey: "maximizeLengthInFullScreen")
         sizing = TrailSizing(defaults: defaults, prefix: prefix)
     }
 

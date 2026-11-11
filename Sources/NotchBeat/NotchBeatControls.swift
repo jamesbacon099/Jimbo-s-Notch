@@ -294,6 +294,9 @@ struct NotchBeatControls: View {
             }
 
             sizeSlider("Length", value: $settings.sizing.length, range: TrailSizing.lengthRange)
+            Toggle("Max length in full screen", isOn: $settings.maximizeLengthInFullScreen)
+                .toggleStyle(.switch)
+                .controlSize(.small)
             sizeSlider("Height", value: $settings.sizing.height, range: TrailSizing.heightRange)
             sizeSlider("Vertical offset", value: $settings.sizing.verticalOffset, range: TrailSizing.verticalOffsetRange)
                 .help("Negative moves the visualizer up. Positive moves it down.")
