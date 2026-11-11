@@ -74,6 +74,20 @@ final class VisualizerSettings: ObservableObject {
         didSet { defaults.set(dancersPerSide, forKey: "dancersPerSide") }
     }
 
+    @Published var rainfallFromNotch: Bool {
+        didSet { defaults.set(rainfallFromNotch, forKey: "rainfallFromNotch") }
+    }
+    @Published var rainfallDensity: Double {
+        didSet { defaults.set(rainfallDensity, forKey: "rainfallDensity") }
+    }
+    @Published var laserThickness: Double {
+        didSet { defaults.set(laserThickness, forKey: "laserThickness") }
+    }
+
+    @Published var dancerThickness: Double {
+        didSet { defaults.set(dancerThickness, forKey: "dancerThickness") }
+    }
+
     @Published var dancerSparks: Bool {
         didSet { defaults.set(dancerSparks, forKey: "dancerSparks") }
     }
@@ -86,6 +100,20 @@ final class VisualizerSettings: ObservableObject {
         didSet { defaults.set(flowFromNotch, forKey: "fireFromNotch") }
     }
 
+    @Published var effectMotion: EffectMotion {
+        didSet {
+            defaults.set(["speed": effectMotion.speed, "density": effectMotion.density,
+                          "reversed": effectMotion.reversed], forKey: effectPrefix + "motion")
+        }
+    }
+
+    private static func loadMotion(_ defaults: UserDefaults, style: VisualizerStyle) -> EffectMotion {
+        let values = defaults.dictionary(forKey: "visualizer." + style.rawValue + ".motion") ?? [:]
+        return EffectMotion(speed: min(2.5, max(0.25, values["speed"] as? Double ?? 1)),
+                            density: min(2.5, max(0.6, values["density"] as? Double ?? 1)),
+                            reversed: values["reversed"] as? Bool ?? false)
+    }
+
     @Published var selectedStyle: VisualizerStyle {
         didSet {
             guard selectedStyle != oldValue else { return }
@@ -95,6 +123,7 @@ final class VisualizerSettings: ObservableObject {
             lastFixedPalette = appearance.fixed
             spectrumHue = appearance.hue
             sizing = appearance.sizing
+            effectMotion = Self.loadMotion(defaults, style: selectedStyle)
         }
     }
 
@@ -124,6 +153,10 @@ final class VisualizerSettings: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        rainfallFromNotch = defaults.bool(forKey: "rainfallFromNotch")
+        rainfallDensity = min(3, max(1, defaults.object(forKey: "rainfallDensity") as? Double ?? 1))
+        laserThickness = min(1.5, max(0.35, defaults.object(forKey: "laserThickness") as? Double ?? 1))
+        dancerThickness = min(2.4, max(0.65, defaults.object(forKey: "dancerThickness") as? Double ?? 1))
         dancerSparks = defaults.bool(forKey: "dancerSparks")
         splashDensity = min(3, max(1, defaults.object(forKey: "splashDensity") as? Double ?? 1))
         liquidGlassColors = defaults.bool(forKey: "liquidGlassColors")
@@ -144,10 +177,13 @@ final class VisualizerSettings: ObservableObject {
                 case "Inferno": return .splash
                 case "Aurora", "Lightning": return .arcade
                 case "Orbit": return .pulse
+                case "Shatter": return .circuit
+                case "Embers", "Jellyfish": return .cityLights
                 default: return VisualizerStyle(rawValue: saved)
                 }
             } ?? .classic
         selectedStyle = style
+        effectMotion = Self.loadMotion(defaults, style: style)
         let appearance = Self.loadAppearance(defaults, prefix: "visualizer." + style.rawValue + ".")
         spectrumHue = appearance.hue
         selectedPalette = appearance.palette

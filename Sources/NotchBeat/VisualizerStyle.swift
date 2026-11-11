@@ -7,6 +7,12 @@ enum RelaxedDance: String, CaseIterable {
     case slowdance = "Slowdancing"
 }
 
+struct EffectMotion {
+    var speed = 1.0
+    var density = 1.0
+    var reversed = false
+}
+
 enum VisualizerStyle: String, CaseIterable, Identifiable {
     case classic = "Default"
     case dancers = "Dancers"
@@ -15,8 +21,24 @@ enum VisualizerStyle: String, CaseIterable, Identifiable {
     case equalizer = "Equalizer"
     case arcade = "Arcade"
     case pulse = "Pulse"
+    case laser = "Laser"
+    case rainfall = "Rainfall"
+    case ripple = "Ripple"
+    case meteor = "Meteor"
+    case vortex = "Vortex"
+    case circuit = "Circuit"
+    case synthGrid = "Synth Grid"
+    case cityLights = "City Lights"
 
     var id: String { rawValue }
+
+    var hasDensityAndDirection: Bool {
+        [.meteor, .vortex, .circuit, .synthGrid, .cityLights].contains(self)
+    }
+
+    var hasSpeed: Bool {
+        hasDensityAndDirection || [.fire, .splash, .pulse, .laser, .rainfall, .ripple].contains(self)
+    }
 
     var summary: String {
         switch self {
@@ -25,7 +47,15 @@ enum VisualizerStyle: String, CaseIterable, Identifiable {
         case .splash: return "Water jets and droplets splash with the beat."
         case .equalizer: return "Bars show the energy in each frequency band."
         case .arcade: return "A chunky pixel waveform and bursts react to the beat."
+        case .laser: return "Neon beams sweep and fan out with the beat."
+        case .rainfall: return "Digital rain falls in colored streaks."
+        case .ripple: return "Glowing rings spread from the notch."
         case .pulse: return "Bright waves roll outward from the notch."
+        case .meteor: return "Bright meteor heads pull long streaks across the trail."
+        case .vortex: return "Two neon strands twist around each other."
+        case .circuit: return "Layered circuit traces light up as signals run along them."
+        case .synthGrid: return "Audio lifts the lines of a scrolling neon grid."
+        case .cityLights: return "A scrolling skyline lights up with the music."
         case .fire: return "Dancing flames and rising sparks react to the beat."
         }
     }
@@ -46,6 +76,11 @@ struct VisualizerTrail: View {
     var glassFade = false
     var splashDensity = 1.0
     var dancerSparks = false
+    var dancerThickness = 1.0
+    var rainfallFromNotch = false
+    var rainfallDensity = 1.0
+    var laserThickness = 1.0
+    var effectMotion = EffectMotion()
 
     var body: some View {
         if glassFade {
@@ -70,14 +105,17 @@ struct VisualizerTrail: View {
         } else {
             Canvas(rendersAsynchronously: style != .dancers) { context, size in
                 guard channel.isActive || style == .dancers || (style == .equalizer && channel.hasSpectrum) else { return }
-                let phase = time.truncatingRemainder(dividingBy: 120)
+                let phase = (time * effectMotion.speed).truncatingRemainder(dividingBy: 120)
                     + (mirrored || side == .left ? 0 : 7.3)
                 if style == .dancers {
                     let count = min(5, max(1, dancersPerSide))
                     for index in 0..<count {
                         drawDancer(in: context, size: size, index: index, count: count)
                     }
-                } else if style == .equalizer || style == .arcade || style == .pulse {
+                } else if style.hasDensityAndDirection {
+                    let travel = effectMotion.reversed ? -phase : phase
+                    drawMotionEffect(in: context, size: size, phase: travel)
+                } else if [.equalizer, .arcade, .pulse, .laser, .rainfall, .ripple].contains(style) {
                     drawMusicEffect(in: context, size: size, phase: phase)
                 } else if style == .splash || flowFromNotch {
                     drawFromNotch(in: context, size: size, phase: phase)
@@ -206,10 +244,10 @@ struct VisualizerTrail: View {
         let radius = unit * 0.095
         let head = Path(ellipseIn: CGRect(x: headCenter.x - radius, y: headCenter.y - radius,
                                          width: radius * 2, height: radius * 2))
-        let stroke = StrokeStyle(lineWidth: max(0.8, unit * 0.045), lineCap: .round, lineJoin: .round)
+        let stroke = StrokeStyle(lineWidth: max(0.55, max(0.8, unit * 0.045) * dancerThickness), lineCap: .round, lineJoin: .round)
         context.stroke(skeleton, with: .linearGradient(Gradient(colors: palette.colors),
                        startPoint: point(0, 0.25), endPoint: point(0, 0.94)), style: stroke)
-        context.stroke(head, with: .color(palette.highlight), style: stroke)
+        context.fill(head, with: .color(palette.highlight))
         if dancerSparks && time > 0 && (!(emote || slowdance) || activity > 0.02) {
             let beatsPerSecond = 1 / max(0.25, channel.beatDuration)
             let speed = headbang ? (0.32 + headbangEnergy * beatsPerSecond * 0.28)
@@ -288,6 +326,57 @@ struct VisualizerTrail: View {
                     }
                 }
             }
+        case .laser:
+            let thickness = laserThickness
+            let impact = Double(channel.impact)
+            let extra = Int(max(0, 1 - thickness) * 9)
+            let count = lowPower ? 4 + extra / 2 : 8 + extra
+            let origin = CGPoint(x: x(0, size: size), y: height / 2)
+            for beam in 0..<count {
+                let band = Double(channel.bands[beam * 16 / count])
+                let spread = sin(phase * 3 + Double(beam) * 0.85)
+                let end = CGPoint(x: x(0.64 + band * 0.32, size: size),
+                                  y: height * (0.5 + spread * (0.17 + impact * 0.24)))
+                let color = colors[beam % colors.count]
+                var ray = Path()
+                ray.move(to: origin)
+                ray.addLine(to: end)
+                context.stroke(ray, with: .color(color.opacity(0.18 + band * 0.24)),
+                               style: StrokeStyle(lineWidth: height * 0.18 * thickness, lineCap: .round))
+                context.stroke(ray, with: .linearGradient(
+                    Gradient(colors: [palette.highlight, color.opacity(0.12)]),
+                    startPoint: origin, endPoint: end),
+                    style: StrokeStyle(lineWidth: max(0.45, height * 0.055 * thickness), lineCap: .round))
+            }
+        case .rainfall:
+            if rainfallFromNotch {
+                var outward = context
+                outward.translateBy(x: x(0, size: size), y: 0)
+                outward.concatenate(CGAffineTransform(a: 0, b: 1, c: side == .left ? -1 : 1,
+                                                       d: 0, tx: 0, ty: 0))
+                drawRain(in: outward, size: CGSize(width: height, height: max(1, size.width - innerInset)),
+                         phase: phase, orientedOutward: true)
+            } else {
+                drawRain(in: context, size: size, phase: phase, orientedOutward: false)
+            }
+        case .ripple:
+            let count = lowPower ? 5 : 9
+            let impact = Double(channel.impact)
+            for ring in 0..<count {
+                let cycle = phase * 0.60 + Double(ring) / Double(count)
+                let age = cycle - floor(cycle)
+                let center = x(0.04 + age * 0.86, size: size)
+                let radius = height * (0.05 + age * (0.30 + impact * 0.12))
+                let rect = CGRect(x: center - radius * 1.8, y: height / 2 - radius,
+                                  width: radius * 3.6, height: radius * 2)
+                let opacity = sin(age * .pi) * (0.60 + level * 0.40)
+                let color = colors[ring % colors.count]
+                let ringPath = Path(ellipseIn: rect)
+                context.stroke(ringPath, with: .color(color.opacity(opacity * 0.24)),
+                               style: StrokeStyle(lineWidth: max(2, height * 0.19)))
+                context.stroke(ringPath, with: .color(color.opacity(opacity)),
+                               style: StrokeStyle(lineWidth: max(0.8, height * 0.065)))
+            }
         case .pulse:
             let bass = Double(channel.bass)
             let impact = Double(channel.impact)
@@ -315,6 +404,150 @@ struct VisualizerTrail: View {
             }
         default:
             break
+        }
+    }
+
+    private func drawMotionEffect(in context: GraphicsContext, size: CGSize, phase: Double) {
+        let colors = palette.colors
+        let height = size.height
+        let level = Double(channel.level)
+        let impact = Double(channel.impact)
+        let count = Int(Double(lowPower ? 9 : 17) * effectMotion.density)
+        if style == .vortex {
+            let segments = count * 4
+            for strand in [-1.0, 1.0] {
+                var ribbon = Path()
+                for index in 0...segments {
+                    let u = Double(index) / Double(segments)
+                    let wave = sin(u * (4 + effectMotion.density * 2) * .pi - phase * 4)
+                    let amplitude = sin(u * .pi) * (0.20 + level * 0.21)
+                    let point = CGPoint(x: x(u, size: size), y: height * (0.5 + strand * wave * amplitude))
+                    if index == 0 { ribbon.move(to: point) } else { ribbon.addLine(to: point) }
+                }
+                let tint = strand < 0 ? palette.primary : palette.secondary
+                context.stroke(ribbon, with: .color(tint.opacity(0.24)),
+                               style: StrokeStyle(lineWidth: height * 0.18, lineCap: .round, lineJoin: .round))
+                context.stroke(ribbon, with: .linearGradient(
+                    Gradient(colors: [tint.opacity(0.35), tint, palette.highlight, tint.opacity(0.45)]),
+                    startPoint: CGPoint(x: x(0, size: size), y: 0),
+                    endPoint: CGPoint(x: x(1, size: size), y: 0)),
+                    style: StrokeStyle(lineWidth: max(1, height * 0.045), lineCap: .round, lineJoin: .round))
+            }
+            return
+        }
+        for index in 0..<count {
+            let offset = Double(index) / Double(count)
+            let band = Double(channel.bands[index * 16 / count])
+            let cycle = phase * (style == .synthGrid ? 0.45 : 0.75) + offset
+            let age = cycle - floor(cycle)
+            let fade = sin(age * .pi)
+            let color = colors[index % colors.count]
+            let middle = height / 2
+            let center = CGPoint(x: x(age, size: size), y: middle)
+            switch style {
+            case .meteor:
+                let y = middle + sin(Double(index) * 2.4) * height * 0.29
+                let tail = CGPoint(x: x(max(0, age - 0.11 - band * 0.14), size: size), y: y + height * 0.09)
+                let tip = CGPoint(x: center.x, y: y)
+                var streak = Path()
+                streak.move(to: tail)
+                streak.addLine(to: tip)
+                context.stroke(streak, with: .linearGradient(
+                    Gradient(colors: [.clear, color.opacity(fade), palette.highlight.opacity(fade)]),
+                    startPoint: tail, endPoint: tip),
+                    style: StrokeStyle(lineWidth: max(0.9, height * (0.045 + impact * 0.07)), lineCap: .round))
+            case .circuit:
+                let row = Double(index % 7) - 3
+                let start = Double(index / 7) / ceil(Double(count) / 7)
+                let end = min(1, start + 0.30)
+                let y = middle + row * height * 0.106
+                let turnY = y + (row < 0 ? -1 : 1) * height * 0.065
+                var trace = Path()
+                trace.move(to: CGPoint(x: x(start, size: size), y: middle))
+                trace.addLine(to: CGPoint(x: x(min(end, start + 0.035), size: size), y: y))
+                trace.addLine(to: CGPoint(x: x(max(start, end - 0.07), size: size), y: y))
+                trace.addLine(to: CGPoint(x: x(end, size: size), y: turnY))
+                let width = max(0.65, height * (0.025 + band * 0.024))
+                context.stroke(trace, with: .color(color.opacity(0.52 + band * 0.32)),
+                               style: StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round))
+                let signal = start + age * (end - start)
+                let traceY: CGFloat
+                if signal < start + 0.035 {
+                    traceY = middle + (y - middle) * (signal - start) / 0.035
+                } else if signal > end - 0.07 {
+                    traceY = y + (turnY - y) * (signal - (end - 0.07)) / 0.07
+                } else {
+                    traceY = y
+                }
+                let sx = x(signal, size: size)
+                let pad = CGRect(x: sx - width * 2, y: traceY - width, width: width * 4, height: width * 2)
+                context.fill(Path(roundedRect: pad, cornerRadius: width),
+                             with: .color(palette.highlight.opacity(fade * (0.65 + impact * 0.35))))
+            case .synthGrid:
+                let depth = 0.11 + band * 0.28
+                var cell = Path()
+                cell.move(to: CGPoint(x: center.x, y: middle - height * depth))
+                cell.addLine(to: CGPoint(x: center.x, y: middle + height * depth))
+                for sign in [-1.0, 1.0] {
+                    let y = middle + sign * height * depth
+                    cell.move(to: CGPoint(x: center.x, y: y))
+                    cell.addLine(to: CGPoint(x: x(min(1, age + 1.0 / Double(count)), size: size),
+                                             y: y + sign * height * 0.07))
+                }
+                context.stroke(cell, with: .color(color.opacity(fade * (0.53 + band * 0.47))),
+                               style: StrokeStyle(lineWidth: max(0.8, height * 0.045), lineCap: .round))
+            case .cityLights:
+                let street = height * 0.82
+                let shape = 0.5 + 0.5 * sin(Double(index) * 2.39)
+                let buildingHeight = height * (0.18 + shape * 0.28 + band * 0.24 + impact * 0.10)
+                let width = max(1.5, (size.width - innerInset - 4) / Double(count) * 0.83)
+                let tower = CGRect(x: center.x - width / 2, y: street - buildingHeight,
+                                   width: width, height: buildingHeight)
+                var building = Path()
+                building.addRect(tower)
+                if index.isMultiple(of: 3) {
+                    building.addRect(CGRect(x: tower.midX - width * 0.21, y: tower.minY - height * 0.07,
+                                            width: width * 0.42, height: height * 0.07))
+                }
+                context.fill(building, with: .linearGradient(
+                    Gradient(colors: [color.opacity(fade * 0.8), color.opacity(fade * 0.20)]),
+                    startPoint: CGPoint(x: center.x, y: tower.minY),
+                    endPoint: CGPoint(x: center.x, y: street)))
+                context.stroke(building, with: .color(color.opacity(fade * 0.65)),
+                               style: StrokeStyle(lineWidth: max(0.5, height * 0.017)))
+                for row in 0..<(lowPower ? 3 : 5) {
+                    let flicker = 0.5 + 0.5 * sin(phase * 3 + Double(row * 7 + index))
+                    let lit = flicker + band + impact > 0.56
+                    let y = tower.minY + buildingHeight * (0.14 + Double(row) * 0.15)
+                    let pane = CGRect(x: tower.midX - width * 0.29, y: y,
+                                      width: width * 0.58, height: max(0.5, buildingHeight * 0.065))
+                    context.fill(Path(pane), with: .color(palette.highlight.opacity(fade * (lit ? 0.82 : 0.14))))
+                }
+            default:
+                break
+            }
+        }
+    }
+
+    private func drawRain(in context: GraphicsContext, size: CGSize, phase: Double, orientedOutward: Bool) {
+        let count = Int(Double(lowPower ? 15 : 29) * rainfallDensity)
+        let colors = palette.colors
+        for column in 0..<count {
+            let band = Double(channel.bands[column * 16 / count])
+            let seed = Double(column) * 0.618
+            let cycle = phase * (0.65 + Double(column % 5) * 0.14) + seed
+            let age = cycle - floor(cycle)
+            let position = (Double(column) + 0.5) / Double(count)
+            let length = size.height * (0.18 + band * 0.50)
+            let tip = age * (size.height + length)
+            let width = max(0.6, min(3, size.width / Double(count) * 0.55))
+            let center = orientedOutward ? size.width * (0.14 + position * 0.72) : x(position, size: size)
+            let rect = CGRect(x: center - width / 2, y: tip - length, width: width, height: length)
+            let color = colors[column % colors.count]
+            context.fill(Path(roundedRect: rect, cornerRadius: width / 2), with: .linearGradient(
+                Gradient(colors: [.clear, color.opacity(0.48), palette.highlight.opacity(0.66 + band * 0.34)]),
+                startPoint: CGPoint(x: rect.midX, y: rect.minY),
+                endPoint: CGPoint(x: rect.midX, y: rect.maxY)))
         }
     }
 

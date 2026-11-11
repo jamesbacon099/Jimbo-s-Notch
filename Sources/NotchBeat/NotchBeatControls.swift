@@ -64,6 +64,21 @@ struct NotchBeatControls: View {
                     }
                 }
                 .pickerStyle(.menu)
+                if settings.selectedStyle.hasSpeed {
+                    Slider(value: $settings.effectMotion.speed, in: 0.25...2.5) { Text("Speed") }
+                }
+                if settings.selectedStyle.hasDensityAndDirection {
+                    Slider(value: $settings.effectMotion.density, in: 0.6...2.5) { Text("Density") }
+                    Toggle("Reverse direction", isOn: $settings.effectMotion.reversed)
+                }
+                if settings.selectedStyle == .rainfall {
+                    Toggle("Flow from notch", isOn: $settings.rainfallFromNotch)
+                    Slider(value: $settings.rainfallDensity, in: 1...3) { Text("Rainfall density") }
+                }
+                if settings.selectedStyle == .laser {
+                    Slider(value: $settings.laserThickness, in: 0.35...1.5) { Text("Laser thickness") }
+                        .help("Thinner beams make room for more lasers.")
+                }
                 if settings.selectedStyle == .splash {
                     Slider(value: $settings.splashDensity, in: 1...3) { Text("Splash density") }
                 }
@@ -75,6 +90,9 @@ struct NotchBeatControls: View {
                         .help("Start the effect at the notch edges and send it outward.")
                 }
                 if settings.selectedStyle == .dancers {
+                    Slider(value: $settings.dancerThickness, in: 0.65...2.4) {
+                        Text("Dancer thickness")
+                    }
                     Toggle("Dancer sparks", isOn: $settings.dancerSparks)
                         .toggleStyle(.switch)
                         .controlSize(.small)
@@ -220,6 +238,8 @@ struct NotchBeatControls: View {
 
             sizeSlider("Length", value: $settings.sizing.length, range: TrailSizing.lengthRange)
             sizeSlider("Height", value: $settings.sizing.height, range: TrailSizing.heightRange)
+            sizeSlider("Vertical offset", value: $settings.sizing.verticalOffset, range: TrailSizing.verticalOffsetRange)
+                .help("Negative moves the visualizer up. Positive moves it down.")
             sizeSlider("Notch gap", value: $settings.sizing.gap, range: overlay.gapRange)
                 .help("Move the anchors from the display center to the screen edges. Areas behind the physical camera cutout cannot be displayed.")
 

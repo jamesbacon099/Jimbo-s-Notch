@@ -12,6 +12,10 @@ app="$destination/Jimbo's Notch Buddy.app"
 mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
 cp "$project/Info.plist" "$bundle/Contents/Info.plist"
 cp "$notch/Resources/AppIcon.icns" "$bundle/Contents/Resources/AppIcon.icns"
+if [[ -n "${JIMBO_BUNDLED_PREFERENCES:-}" ]]; then
+    plutil -lint "$JIMBO_BUNDLED_PREFERENCES"
+    cp "$JIMBO_BUNDLED_PREFERENCES" "$bundle/Contents/Resources/BundledPreferences.plist"
+fi
 sources=()
 for source in "$notch"/Sources/NotchBeat/*.swift; do
     [[ "$(basename "$source")" == NotchBeatApp.swift ]] || sources+=("$source")

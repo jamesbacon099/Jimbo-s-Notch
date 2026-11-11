@@ -7,7 +7,7 @@ private final class Studio: ObservableObject {
     let audio: AudioMonitor
     private let musicAudio: AudioMonitor
     private let spectrum: MusicSpectrum
-    let monitorColors = MonitorColors()
+    let monitorColors: MonitorColors
     let overlay: NotchOverlayController
     let island: MusicIsland
     private var musicSourceSubscription: AnyCancellable?
@@ -18,7 +18,15 @@ private final class Studio: ObservableObject {
         // Seed preferences from the standalone apps. Studio writes to its own domain.
         let notch = UserDefaults.standard.persistentDomain(forName: "local.notchbeat.visualizer") ?? [:]
         let music = UserDefaults.standard.persistentDomain(forName: "local.jimbo.music") ?? [:]
-        UserDefaults.standard.register(defaults: notch.merging(music) { _, newer in newer }.merging(UserDefaults.standard.persistentDomain(forName: "local.jimbo.studio") ?? [:]) { _, newer in newer })
+        let studio = UserDefaults.standard.persistentDomain(forName: "local.jimbo.studio") ?? [:]
+        var inherited = notch.merging(music) { _, newer in newer }.merging(studio) { _, newer in newer }
+        if let url = Bundle.main.url(forResource: "BundledPreferences", withExtension: "plist"),
+           let data = try? Data(contentsOf: url),
+           let preset = (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String: Any] {
+            inherited.merge(preset) { _, bundled in bundled }
+        }
+        UserDefaults.standard.register(defaults: inherited)
+        monitorColors = MonitorColors()
 
         audio = AudioMonitor()
         musicAudio = AudioMonitor(ignoresOutputVolume: true)
@@ -50,21 +58,24 @@ private final class Studio: ObservableObject {
                 let accent = TrailPalette(hue: hue).primary
                 if model.autoAccent != accent { model.autoAccent = accent }
             }
-        musicSourceSubscription = island.model.$track
-            .map { track in track?.playing == true ? track?.player : nil }
-            .removeDuplicates()
-            .receive(on: RunLoop.main)
-            .sink { [weak musicAudio] player in
-                guard let musicAudio else { return }
-                guard let player,
-                      let running = NSRunningApplication.runningApplications(withBundleIdentifier: player.rawValue).first,
-                      let path = running.bundleURL?.resolvingSymlinksInPath().standardizedFileURL.path else {
+        // Track metadata and audio permissions are separate. Capture only music
+        // apps, even if Automation cannot currently provide their track details.
+        musicSourceSubscription = Timer.publish(every: 0.75, on: .main, in: .common).autoconnect()
+            .prepend(Date())
+            .sink { [weak musicAudio, weak island] _ in
+                guard let musicAudio, let model = island?.model else { return }
+                let players = Player.allCases.filter { model.source == "Auto" || $0.rawValue == model.source }
+                let candidates = AudioApplication.choices().filter { app in
+                    players.contains { $0.rawValue == app.bundleID }
+                }
+                let app = candidates.first { $0.bundleID == model.track?.player.rawValue }
+                    ?? candidates.first { $0.bundleID == Player.spotify.rawValue }
+                    ?? candidates.first
+                guard let app else {
                     if musicAudio.running { musicAudio.stop() }
                     return
                 }
-                let source = AudioMonitor.AudioSource.application(
-                    AudioApplication(name: player.name, bundlePath: path, bundleID: player.rawValue))
-                musicAudio.select(source)
+                musicAudio.select(.application(app))
                 if !musicAudio.running { musicAudio.start() }
             }
         island.model.visualizerTint = settings.palette(for: frames.current).primary
@@ -106,12 +117,12 @@ private final class MusicSpectrum {
     }
 
     private func update(from captured: AudioFrame) {
-        guard player?.track?.playing == true else {
-            if frames.current != AudioFrame() { frames.current = AudioFrame() }
-            return
-        }
         if captured.left.hasSpectrum || captured.right.hasSpectrum {
             if frames.current != captured { frames.current = captured }
+            return
+        }
+        guard player?.track?.playing == true else {
+            if frames.current != AudioFrame() { frames.current = AudioFrame() }
             return
         }
 

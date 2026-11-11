@@ -6,12 +6,14 @@ enum TrailSide: CaseIterable {
 
 struct TrailSizing: Equatable {
     static let lengthRange = 38.0...720.0
-    static let heightRange = 5.0...42.0
+    static let heightRange = 5.0...72.0
+    static let verticalOffsetRange = -18.0...100.0
     static let gapRange = -10000.0...10000.0
     static let defaultGap = 15.0
     var length: Double
     var height: Double
     var gap: Double
+    var verticalOffset: Double
 
     init(defaults: UserDefaults = .standard, prefix: String = "") {
         func saved(_ key: String) -> Double? {
@@ -21,6 +23,8 @@ struct TrailSizing: Equatable {
                      max(Self.lengthRange.lowerBound, saved("trailLength") ?? 178))
         height = min(Self.heightRange.upperBound,
                      max(Self.heightRange.lowerBound, saved("trailHeight") ?? 26))
+        verticalOffset = min(Self.verticalOffsetRange.upperBound,
+                             max(Self.verticalOffsetRange.lowerBound, saved("trailVerticalOffset") ?? 0))
         let savedGap = saved("trailGap") ?? Self.defaultGap
         gap = min(Self.gapRange.upperBound, max(Self.gapRange.lowerBound, savedGap))
     }
@@ -32,6 +36,7 @@ struct TrailSizing: Equatable {
     func saveChanges(from previous: TrailSizing, to defaults: UserDefaults, prefix: String) {
         if length != previous.length { defaults.set(length, forKey: prefix + "trailLength") }
         if height != previous.height { defaults.set(height, forKey: prefix + "trailHeight") }
+        if verticalOffset != previous.verticalOffset { defaults.set(verticalOffset, forKey: prefix + "trailVerticalOffset") }
         if gap != previous.gap { defaults.set(gap, forKey: prefix + "trailGap") }
     }
 }
@@ -79,7 +84,7 @@ struct MenuBarSpace: Equatable, Sendable {
     }
 
     func balancedLanes(island: CGRect?, scale: CGFloat,
-                       requestedSize: CGSize, gap: CGFloat,
+                       requestedSize: CGSize, gap: CGFloat, verticalOffset: CGFloat = 0,
                        centeredOnAnchor: Bool = false) -> (left: CGRect, right: CGRect)? {
         let scale = max(1, scale)
         let geometry = anchorGeometry(island: island)
@@ -87,14 +92,15 @@ struct MenuBarSpace: Equatable, Sendable {
         let leftAnchor = (geometry.center - distance) * scale
         let rightAnchor = (geometry.center + distance) * scale
         let width = floor(min(geometry.halfWidth, requestedSize.width) * scale) / scale
-        let height = floor(min(requestedSize.height, leftArea.height - 2) * scale) / scale
+        let height = floor(requestedSize.height * scale) / scale
         guard width >= Self.minimumWidth, height >= 5 else { return nil }
 
         let top = leftArea.maxY
         let bottom = leftArea.minY
         let visibleCenter = island.map { (max(bottom, $0.minY) + min(top, $0.maxY)) / 2 } ?? leftArea.midY
-        let boundedY = min(top - height - 1, max(bottom + 1, visibleCenter - height / 2))
-        let y = top + ((boundedY - top) * scale).rounded() / scale
+        // Anchor the top at the reference trail height. Height adds room below it.
+        let anchorTop = min(top - 1, visibleCenter + 13)
+        let y = top + ((anchorTop - verticalOffset - height - top) * scale).rounded() / scale
 
         // Length changes the extent around a fixed anchor. Screen edges clip the
         // overflow, so changing length never pushes the anchor back into view.

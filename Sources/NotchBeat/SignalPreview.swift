@@ -8,7 +8,7 @@ struct LiveSignalPreview: View {
     @State private var frame = AudioFrame()
 
     var body: some View {
-        SignalPreview(frame: frame, palette: settings.palette(for: frame), mode: mode, lowPower: lowPower, style: settings.selectedStyle, flowFromNotch: settings.flowFromNotch, dancersPerSide: settings.dancersPerSide, relaxedDance: settings.relaxedDance, glassFade: settings.liquidGlassColors, splashDensity: settings.splashDensity, dancerSparks: settings.dancerSparks)
+        SignalPreview(frame: frame, palette: settings.palette(for: frame), mode: mode, lowPower: lowPower, style: settings.selectedStyle, flowFromNotch: settings.flowFromNotch, dancersPerSide: settings.dancersPerSide, relaxedDance: settings.relaxedDance, glassFade: settings.liquidGlassColors, splashDensity: settings.splashDensity, dancerSparks: settings.dancerSparks, dancerThickness: settings.dancerThickness, rainfallFromNotch: settings.rainfallFromNotch, rainfallDensity: settings.rainfallDensity, laserThickness: settings.laserThickness, effectMotion: settings.effectMotion)
             .onReceive(frames.$current.throttle(for: .milliseconds(50), scheduler: RunLoop.main, latest: true)) {
                 frame = $0
             }
@@ -27,6 +27,11 @@ struct SignalPreview: View {
     var glassFade = false
     var splashDensity = 1.0
     var dancerSparks = false
+    var dancerThickness = 1.0
+    var rainfallFromNotch = false
+    var rainfallDensity = 1.0
+    var laserThickness = 1.0
+    var effectMotion = EffectMotion()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var hasSignal: Bool {
@@ -47,13 +52,13 @@ struct SignalPreview: View {
             let time = reduceMotion || !hasSignal ? 3.4 : frame.animationTime
             HStack(spacing: 5) {
                 VisualizerTrail(style: style, flowFromNotch: flowFromNotch, dancersPerSide: dancersPerSide, relaxedDance: relaxedDance, channel: hasSignal ? frame.left : Self.previewLeft, time: time,
-                             palette: palette, side: .left, mirrored: mode == .mono, lowPower: lowPower, glassFade: glassFade, splashDensity: splashDensity, dancerSparks: dancerSparks)
+                             palette: palette, side: .left, mirrored: mode == .mono, lowPower: lowPower, glassFade: glassFade, splashDensity: splashDensity, dancerSparks: dancerSparks, dancerThickness: dancerThickness, rainfallFromNotch: rainfallFromNotch, rainfallDensity: rainfallDensity, laserThickness: laserThickness, effectMotion: effectMotion)
                 Capsule()
                     .fill(.black.opacity(0.68))
                     .overlay { Capsule().strokeBorder(.white.opacity(0.13), lineWidth: 1) }
                     .frame(width: 31, height: 12)
                 VisualizerTrail(style: style, flowFromNotch: flowFromNotch, dancersPerSide: dancersPerSide, relaxedDance: relaxedDance, channel: hasSignal ? frame.right : mode == .mono ? Self.previewLeft : Self.previewRight,
-                             time: time, palette: palette, side: .right, mirrored: mode == .mono, lowPower: lowPower, glassFade: glassFade, splashDensity: splashDensity, dancerSparks: dancerSparks)
+                             time: time, palette: palette, side: .right, mirrored: mode == .mono, lowPower: lowPower, glassFade: glassFade, splashDensity: splashDensity, dancerSparks: dancerSparks, dancerThickness: dancerThickness, rainfallFromNotch: rainfallFromNotch, rainfallDensity: rainfallDensity, laserThickness: laserThickness, effectMotion: effectMotion)
             }
             .frame(height: 43)
             .accessibilityHidden(true)
