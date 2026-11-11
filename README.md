@@ -8,7 +8,7 @@ Jimbo’s Notch Buddy combines a notch music player and audio visualizers in one
 
 ## Download for macOS
 
-Download **Jimbos-Notch-Buddy-macOS-arm64.zip** from the [latest release](https://github.com/jamesbacon099/Jimbo-s-Notch/releases/latest), unzip it, and move **Jimbo’s Notch Buddy.app** into Applications. The download is for Apple Silicon Macs. Intel Macs can build from source. The optional **Personal Setup** ZIP starts with Jimbo’s saved preferences on a fresh install. Existing app preferences take precedence.
+Download **Jimbos-Notch-Buddy-macOS-arm64.zip** from the [latest release](https://github.com/jamesbacon099/Jimbo-s-Notch/releases/latest), unzip it, and move **Jimbo’s Notch Buddy.app** into Applications. The download is for Apple Silicon Macs. Intel Macs can build from source. The standard build starts with Jimbo’s saved app preferences on a fresh install. Existing app preferences take precedence.
 
 Open **Jimbo’s Notch Buddy** and click its waveform icon in the menu bar. Choose the **Music Monitor** tab. The standalone **Jimbo’s Notch** app only contains the visualizer.
 
