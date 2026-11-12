@@ -32,6 +32,12 @@ struct EffectMotion {
     var silkDetail = 0.8
 }
 
+enum VisualizerMode: String, CaseIterable {
+    case single = "Single"
+    case randomizer = "Randomizer"
+    case combine = "Combine"
+}
+
 enum VisualizerStyle: String, CaseIterable, Identifiable {
     case classic = "Default"
     case silk = "Silk Ribbons"

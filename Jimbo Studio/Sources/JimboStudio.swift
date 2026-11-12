@@ -13,6 +13,7 @@ private final class Studio: ObservableObject {
     let monitorColors: MonitorColors
     let overlay: NotchOverlayController
     let island: MusicIsland
+    private var trackSubscription: AnyCancellable?
     private var musicSourceSubscription: AnyCancellable?
     private var autoAccentSubscription: AnyCancellable?
     private var tintSubscription: AnyCancellable?
@@ -41,6 +42,13 @@ private final class Studio: ObservableObject {
         island.sharedScreen = { [weak overlay] in overlay?.preferredScreen }
         island.onFrameChange = { [weak overlay] frame in overlay?.positionAroundPlayer(frame) }
         let settings = overlay.settings
+        trackSubscription = island.model.$track
+            .compactMap { track -> String? in
+                guard let track, track.playing else { return nil }
+                return track.player.rawValue + ":" + track.id
+            }
+            .removeDuplicates()
+            .sink { [weak settings] in settings?.songChanged($0) }
         island.model.artworkTintProvider = { [weak settings] artwork in
             let colors = artwork.flatMap { AlbumArtwork.colors(from: $0) }
             settings?.setArtworkColors(colors?.palette)

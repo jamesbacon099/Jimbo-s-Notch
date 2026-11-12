@@ -34,9 +34,9 @@ final class NotchOverlayController: ObservableObject {
 
         if !usesIntegratedPlayer {
             settings.$selectedPalette.removeDuplicates()
-                .combineLatest(audio.$source.removeDuplicates())
+                .combineLatest(settings.$mode.removeDuplicates(), audio.$source.removeDuplicates())
                 .receive(on: RunLoop.main)
-                .sink { [weak self] _, source in
+                .sink { [weak self] _, _, source in
                     self?.settings.updateArtwork(source: source)
                 }.store(in: &subscriptions)
         }
@@ -69,7 +69,7 @@ final class NotchOverlayController: ObservableObject {
         panel.ignoresMouseEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .canJoinAllApplications, .fullScreenAuxiliary,
                                     .stationary, .ignoresCycle]
-        panel.contentView = NSHostingView(rootView: TrailView(audio: audio, frames: audio.frames, equalizerFrames: musicSpectrumFrames ?? audio.frames, settings: settings, side: side))
+        panel.contentView = NSHostingView(rootView: TrailLayers(audio: audio, frames: audio.frames, equalizerFrames: musicSpectrumFrames ?? audio.frames, settings: settings, side: side))
         return panel
     }
 
@@ -243,6 +243,24 @@ private struct TrailClock {
     }
 }
 
+private struct TrailLayers: View {
+    let audio: AudioMonitor
+    let frames: AudioFrames
+    let equalizerFrames: AudioFrames
+    @ObservedObject var settings: VisualizerSettings
+    let side: TrailSide
+
+    var body: some View {
+        ZStack {
+            ForEach(settings.displayedStyles) { style in
+                TrailView(audio: audio, frames: frames, equalizerFrames: equalizerFrames,
+                          settings: settings, side: side, style: style)
+                    .opacity(style == settings.selectedStyle ? 1 : settings.secondOpacity)
+            }
+        }
+    }
+}
+
 private struct TrailView: View {
     @ObservedObject var audio: AudioMonitor
     @ObservedObject var frames: AudioFrames
@@ -250,17 +268,18 @@ private struct TrailView: View {
     @ObservedObject var settings: VisualizerSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let side: TrailSide
+    let style: VisualizerStyle
     @State private var heldFrame: AudioFrame?
     @State private var clock = TrailClock()
     @State private var idleTime = ProcessInfo.processInfo.systemUptime
 
     var body: some View {
-        let musicOnly = settings.selectedStyle == .equalizer && equalizerFrames !== frames
+        let musicOnly = style == .equalizer && equalizerFrames !== frames
         let current = musicOnly ? equalizerFrames.current : frames.current
-        let isDancer = settings.selectedStyle == .dancers
+        let isDancer = style == .dancers
         let currentChannel = side == .left ? current.left : current.right
         let idleDancers = isDancer && !current.isActive
-        let hasSignal = settings.selectedStyle == .equalizer ? currentChannel.hasSpectrum : currentChannel.isActive
+        let hasSignal = style == .equalizer ? currentChannel.hasSpectrum : currentChannel.isActive
         let idleEffect = !isDancer && !hasSignal
         let idleFrame = musicOnly ? Self.quietEqualizerFrame : heldFrame ?? Self.stillFrame
         let frame = idleEffect ? idleFrame : current
@@ -270,7 +289,7 @@ private struct TrailView: View {
         .onChange(of: current, initial: true) { _, frame in
             guard !isDancer else { return }
             let channel = side == .left ? frame.left : frame.right
-            if settings.selectedStyle == .equalizer ? channel.hasSpectrum : channel.isActive {
+            if style == .equalizer ? channel.hasSpectrum : channel.isActive {
                 if !musicOnly { heldFrame = frame }
                 clock.tick(at: ProcessInfo.processInfo.systemUptime, playing: true)
             }
@@ -309,28 +328,27 @@ private struct TrailView: View {
 
     private func trail(frame: AudioFrame, channel: ChannelFrame, time: TimeInterval, idleEffect: Bool) -> some View {
         var channel = channel
-        if frame.animationTime > 0 && settings.selectedStyle == .dancers {
+        if frame.animationTime > 0 && style == .dancers {
             let age = min(0.05, max(0, time - frame.animationTime))
             channel.danceBeat += age / channel.beatDuration
         }
-        let fire = settings.selectedStyle == .fire
+        let fire = style == .fire
         let fromNotch = settings.flowFromNotch || (fire && idleEffect)
-        if !idleEffect && settings.selectedStyle != .dancers, let hit = channel.lastHit {
+        if !idleEffect && style != .dancers, let hit = channel.lastHit {
             channel.lastHit = time - max(0, frame.animationTime - hit)
         } else if idleEffect {
             channel.lastHit = nil
         }
-        if settings.selectedStyle == .equalizer && equalizerFrames === frames && !reduceMotion {
+        if style == .equalizer && equalizerFrames === frames && !reduceMotion {
             let idleAmount = max(0, 1 - clock.speed)
             for index in 0..<16 {
                 let ripple = (0.5 + 0.5 * sin(time * 4 + Double(index) * 0.66)) * 0.07
                 channel.spectrum[index] = min(1, channel.spectrum[index] + Float(ripple * idleAmount))
             }
         }
-        return VisualizerTrail(style: settings.selectedStyle, flowFromNotch: fromNotch,
-                               dancersPerSide: settings.dancersPerSide, relaxedDance: settings.relaxedDance,
-                               channel: channel, time: reduceMotion ? 0 : time,
-                               palette: settings.palette(for: frame), side: side, mirrored: frame.mode == .mono,
-                               lowPower: audio.lowPower, innerInset: fire && fromNotch ? 0 : 2, glassFade: settings.liquidGlassColors, splashDensity: settings.splashDensity, dancerSparks: settings.dancerSparks, dancerThickness: settings.dancerThickness, rainfallFromNotch: settings.rainfallFromNotch, rainfallDensity: settings.rainfallDensity, laserThickness: settings.laserThickness, effectMotion: settings.effectMotion, plasmaSparks: settings.plasmaSparks)
+        return settings.makeTrail(style: style, frame: frame, channel: channel,
+                                  time: reduceMotion ? 0 : time, side: side,
+                                  mirrored: frame.mode == .mono, lowPower: audio.lowPower,
+                                  innerInset: fire && fromNotch ? 0 : 2, flowFromNotch: fromNotch)
     }
 }

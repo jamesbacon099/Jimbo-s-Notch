@@ -45,13 +45,15 @@ struct NotchBeatControls: View {
     @ObservedObject var overlay: NotchOverlayController
     @ObservedObject var settings: VisualizerSettings
     @State private var appearanceTab = AppearanceTab.colors
+    @State private var showsRotationEffects = false
     @State private var applications: [AudioApplication] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
             header
             channelControl
-            LiveSignalPreview(frames: settings.selectedStyle == .equalizer ? overlay.musicSpectrumFrames ?? audio.frames : audio.frames, settings: settings, mode: audio.channelMode, lowPower: audio.lowPower)
+            LiveSignalPreview(frames: audio.frames, equalizerFrames: overlay.musicSpectrumFrames ?? audio.frames,
+                              settings: settings, mode: audio.channelMode, lowPower: audio.lowPower)
             audioControls
                 .modifier(ControlCard())
             appearanceControls
@@ -97,12 +99,58 @@ struct NotchBeatControls: View {
                     .controlSize(.small)
                 PaletteChooser(settings: settings)
             } else {
-                Picker("Visualizer", selection: $settings.selectedStyle) {
-                    ForEach(VisualizerStyle.allCases) { style in
-                        Text(style.displayName).tag(style)
+                Picker("Effect mode", selection: $settings.mode) {
+                    ForEach(VisualizerMode.allCases, id: \.self) { mode in
+                        Text(mode.rawValue).tag(mode)
                     }
                 }
-                .pickerStyle(.menu)
+                .pickerStyle(.segmented)
+                switch settings.mode {
+                case .single:
+                    effectPicker("Effect")
+                case .randomizer:
+                    Button {
+                        showsRotationEffects.toggle()
+                    } label: {
+                        Label("Rotation effects (\(settings.rotationEffects.count))", systemImage: "chevron.down")
+                    }
+                    .popover(isPresented: $showsRotationEffects, arrowEdge: .bottom) {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(VisualizerStyle.allCases) { style in
+                                    Toggle(style.displayName, isOn: Binding(
+                                        get: { settings.rotationEffects.contains(style) },
+                                        set: { settings.setRotationEffect(style, enabled: $0) }
+                                    ))
+                                    .toggleStyle(.checkbox)
+                                    .disabled(settings.rotationEffects.count == 1 && settings.rotationEffects.contains(style))
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                        }
+                        .frame(width: 200, height: 265)
+                    }
+                    LabeledContent("Playing effect", value: settings.selectedStyle.displayName)
+                    Text("Switches when Apple Music or Spotify starts a different song.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                case .combine:
+                    effectPicker("Base effect")
+                    Picker("Overlay effect", selection: Binding(
+                        get: { settings.secondaryStyle ?? settings.secondStyle },
+                        set: { settings.secondStyle = $0 }
+                    )) {
+                        ForEach(VisualizerStyle.allCases.filter { $0 != settings.selectedStyle }) { style in
+                            Text(style.displayName).tag(style)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    Slider(value: $settings.secondOpacity, in: 0.1...1) { Text("Overlay opacity") }
+                    Text("Both effects share the base effect’s colors and trail size.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 if settings.selectedStyle.hasSpeed {
                     Slider(value: $settings.effectMotion.speed, in: 0.25...2.5) { Text("Speed") }
                 }
@@ -166,6 +214,15 @@ struct NotchBeatControls: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    private func effectPicker(_ label: String) -> some View {
+        Picker(label, selection: $settings.selectedStyle) {
+            ForEach(VisualizerStyle.allCases) { style in
+                Text(style.displayName).tag(style)
+            }
+        }
+        .pickerStyle(.menu)
     }
 
     private var header: some View {

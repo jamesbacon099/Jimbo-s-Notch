@@ -113,10 +113,21 @@ final class VisualizerSettings: ObservableObject {
 
     @Published var effectMotion: EffectMotion {
         didSet {
+            savedMotion[selectedStyle] = effectMotion
             defaults.set(["speed": effectMotion.speed, "density": effectMotion.density,
                           "reversed": effectMotion.reversed, "waveDepth": effectMotion.waveDepth,
                           "silkDetail": effectMotion.silkDetail], forKey: effectPrefix + "motion")
         }
+    }
+
+    private var savedMotion: [VisualizerStyle: EffectMotion] = [:]
+
+    func motion(for style: VisualizerStyle) -> EffectMotion {
+        if style == selectedStyle { return effectMotion }
+        if let saved = savedMotion[style] { return saved }
+        let motion = Self.loadMotion(defaults, style: style)
+        savedMotion[style] = motion
+        return motion
     }
 
     private static func loadMotion(_ defaults: UserDefaults, style: VisualizerStyle) -> EffectMotion {
@@ -163,10 +174,77 @@ final class VisualizerSettings: ObservableObject {
         spectrumHue = colors.hue
     }
 
+    @Published var mode: VisualizerMode {
+        didSet {
+            guard mode != oldValue else { return }
+            defaults.set(mode.rawValue, forKey: "visualizerMode")
+            if mode == .randomizer {
+                remainingRotation.removeAll()
+                advanceRotation()
+            } else if oldValue == .randomizer {
+                selectedStyle = manualStyle
+            }
+        }
+    }
+
+    @Published private(set) var rotationEffects: Set<VisualizerStyle>
+    @Published var secondStyle: VisualizerStyle {
+        didSet { defaults.set(secondStyle.rawValue, forKey: "secondVisualizerStyle") }
+    }
+    @Published var secondOpacity: Double {
+        didSet { defaults.set(secondOpacity, forKey: "secondVisualizerOpacity") }
+    }
+
+    private var manualStyle: VisualizerStyle
+    private var remainingRotation: [VisualizerStyle] = []
+    private var lastSong: String?
+
+    var secondaryStyle: VisualizerStyle? {
+        guard mode == .combine else { return nil }
+        return secondStyle == selectedStyle
+            ? VisualizerStyle.allCases.first { $0 != selectedStyle }
+            : secondStyle
+    }
+
+    var displayedStyles: [VisualizerStyle] {
+        [selectedStyle] + (secondaryStyle.map { [$0] } ?? [])
+    }
+
+    func setRotationEffect(_ style: VisualizerStyle, enabled: Bool) {
+        var effects = rotationEffects
+        if enabled { effects.insert(style) } else { effects.remove(style) }
+        guard !effects.isEmpty, effects != rotationEffects else { return }
+        rotationEffects = effects
+        defaults.set(VisualizerStyle.allCases.filter(effects.contains).map(\.rawValue),
+                     forKey: "visualizerRotationEffects")
+        remainingRotation.removeAll()
+        if mode == .randomizer && !effects.contains(selectedStyle) { advanceRotation() }
+    }
+
+    func songChanged(_ identity: String) {
+        guard !identity.isEmpty, lastSong != identity else { return }
+        let hadSong = lastSong != nil
+        lastSong = identity
+        if hadSong && mode == .randomizer { advanceRotation() }
+    }
+
+    private func advanceRotation() {
+        if remainingRotation.isEmpty {
+            remainingRotation = VisualizerStyle.allCases.filter(rotationEffects.contains).shuffled()
+            if remainingRotation.count > 1, remainingRotation.last == selectedStyle {
+                remainingRotation.swapAt(0, remainingRotation.count - 1)
+            }
+        }
+        if let next = remainingRotation.popLast() { selectedStyle = next }
+    }
+
     @Published var selectedStyle: VisualizerStyle {
         didSet {
             guard selectedStyle != oldValue else { return }
-            defaults.set(selectedStyle.rawValue, forKey: "selectedVisualizerStyle")
+            if mode != .randomizer {
+                manualStyle = selectedStyle
+                defaults.set(selectedStyle.rawValue, forKey: "selectedVisualizerStyle")
+            }
             if !keepColorSettings { restoreEffectColors() }
             sizing = TrailSizing(defaults: defaults, prefix: effectPrefix)
             effectMotion = Self.loadMotion(defaults, style: selectedStyle)
@@ -239,9 +317,22 @@ final class VisualizerSettings: ObservableObject {
                 default: return VisualizerStyle(rawValue: saved)
                 }
             } ?? .classic
-        selectedStyle = style
-        effectMotion = Self.loadMotion(defaults, style: style)
-        let prefix = "visualizer." + style.rawValue + "."
+        let savedMode = defaults.string(forKey: "visualizerMode").flatMap(VisualizerMode.init(rawValue:)) ?? .single
+        mode = savedMode
+        manualStyle = style
+        let savedRotation = (defaults.stringArray(forKey: "visualizerRotationEffects") ?? [])
+            .compactMap(VisualizerStyle.init(rawValue:))
+        let rotation = savedRotation.isEmpty ? Set(VisualizerStyle.allCases) : Set(savedRotation)
+        rotationEffects = rotation
+        secondStyle = defaults.string(forKey: "secondVisualizerStyle").flatMap(VisualizerStyle.init(rawValue:)) ?? .silk
+        secondOpacity = min(1, max(0.1, defaults.object(forKey: "secondVisualizerOpacity") as? Double ?? 0.7))
+        var startingRotation = savedMode == .randomizer
+            ? VisualizerStyle.allCases.filter(rotation.contains).shuffled() : []
+        let initialStyle = startingRotation.popLast() ?? style
+        remainingRotation = startingRotation
+        selectedStyle = initialStyle
+        effectMotion = Self.loadMotion(defaults, style: initialStyle)
+        let prefix = "visualizer." + initialStyle.rawValue + "."
         let colors = Self.loadColors(defaults, prefix: sharesColors ? Self.sharedColorPrefix : prefix)
         spectrumHue = colors.hue
         selectedPalette = colors.palette
@@ -279,7 +370,7 @@ final class VisualizerSettings: ObservableObject {
 
     func updateArtwork(source: AudioMonitor.AudioSource) {
         var players: [AlbumArtwork.Player] = []
-        if selectedPalette == .albumArt {
+        if selectedPalette == .albumArt || mode == .randomizer {
             switch source {
             case .system: players = AlbumArtwork.Player.allCases
             case .application(let app): players = AlbumArtwork.Player.allCases.filter { $0.rawValue == app.bundleID }
@@ -307,10 +398,11 @@ final class VisualizerSettings: ObservableObject {
                 var next: AlbumArtwork.Track?
                 for player in players where !NSRunningApplication.runningApplications(withBundleIdentifier: player.rawValue).isEmpty {
                     next = await AlbumArtwork.read(player, previous: current)
-                    if next?.colors != nil || Task.isCancelled { break }
+                    if (self?.mode == .randomizer ? next != nil : next?.colors != nil) || Task.isCancelled { break }
                 }
                 guard !Task.isCancelled, let self else { return }
                 current = next
+                if let next { songChanged(next.player.rawValue + ":" + next.id) }
                 if artworkColors != current?.colors { artworkColors = current?.colors }
                 try? await Task.sleep(for: .seconds(3))
             }
@@ -353,8 +445,8 @@ final class VisualizerSettings: ObservableObject {
         return selection == .spectrum ? TrailPalette(hue: hue) : selection.colors
     }
 
-    func palette(for frame: AudioFrame) -> TrailPalette {
-        if selectedStyle == .electricMesh && selectedPalette == .automatic {
+    func palette(for frame: AudioFrame, style: VisualizerStyle? = nil) -> TrailPalette {
+        if (style ?? selectedStyle) == .electricMesh && selectedPalette == .automatic {
             let hue = frame.musicHue ?? 0.48
             var palette = TrailPalette(hue: hue)
             palette.rainbowHue = hue
@@ -366,4 +458,18 @@ final class VisualizerSettings: ObservableObject {
         }
         return basePalette
     }
+
+    func makeTrail(style: VisualizerStyle, frame: AudioFrame, channel: ChannelFrame,
+                   time: TimeInterval, side: TrailSide, mirrored: Bool, lowPower: Bool,
+                   innerInset: CGFloat, flowFromNotch: Bool) -> VisualizerTrail {
+        VisualizerTrail(style: style, flowFromNotch: flowFromNotch,
+                        dancersPerSide: dancersPerSide, relaxedDance: relaxedDance,
+                        channel: channel, time: time, palette: palette(for: frame, style: style),
+                        side: side, mirrored: mirrored, lowPower: lowPower, innerInset: innerInset,
+                        glassFade: liquidGlassColors, splashDensity: splashDensity,
+                        dancerSparks: dancerSparks, dancerThickness: dancerThickness,
+                        rainfallFromNotch: rainfallFromNotch, rainfallDensity: rainfallDensity,
+                        laserThickness: laserThickness, effectMotion: motion(for: style), plasmaSparks: plasmaSparks)
+    }
+
 }

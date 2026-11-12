@@ -2,64 +2,60 @@ import SwiftUI
 
 struct LiveSignalPreview: View {
     let frames: AudioFrames
+    let equalizerFrames: AudioFrames
     @ObservedObject var settings: VisualizerSettings
     let mode: ChannelMode
     let lowPower: Bool
     @State private var frame = AudioFrame()
-
-    var body: some View {
-        SignalPreview(frame: frame, palette: settings.palette(for: frame), mode: mode, lowPower: lowPower, style: settings.selectedStyle, flowFromNotch: settings.flowFromNotch, dancersPerSide: settings.dancersPerSide, relaxedDance: settings.relaxedDance, glassFade: settings.liquidGlassColors, splashDensity: settings.splashDensity, dancerSparks: settings.dancerSparks, dancerThickness: settings.dancerThickness, rainfallFromNotch: settings.rainfallFromNotch, rainfallDensity: settings.rainfallDensity, laserThickness: settings.laserThickness, effectMotion: settings.effectMotion, plasmaSparks: settings.plasmaSparks)
-            .onReceive(frames.$current.throttle(for: .milliseconds(50), scheduler: RunLoop.main, latest: true)) {
-                frame = $0
-            }
-    }
-}
-
-struct SignalPreview: View {
-    let frame: AudioFrame
-    let palette: TrailPalette
-    var mode = ChannelMode.stereo
-    var lowPower = false
-    var style = VisualizerStyle.classic
-    var flowFromNotch = false
-    var dancersPerSide = 1
-    var relaxedDance = RelaxedDance.martialArts
-    var glassFade = false
-    var splashDensity = 1.0
-    var dancerSparks = false
-    var dancerThickness = 1.0
-    var rainfallFromNotch = false
-    var rainfallDensity = 1.0
-    var laserThickness = 1.0
-    var effectMotion = EffectMotion()
-    var plasmaSparks = PlasmaSparks()
+    @State private var equalizerFrame = AudioFrame()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var hasSignal: Bool {
+    private func signal(for style: VisualizerStyle) -> AudioFrame {
+        style == .equalizer && equalizerFrames !== frames ? equalizerFrame : frame
+    }
+
+    private func hasSignal(_ frame: AudioFrame, for style: VisualizerStyle) -> Bool {
         style == .equalizer ? frame.left.hasSpectrum || frame.right.hasSpectrum : frame.isActive
     }
 
+    private func previewTrail(on side: TrailSide) -> some View {
+        ZStack {
+            ForEach(settings.displayedStyles) { style in
+                let frame = signal(for: style)
+                let active = hasSignal(frame, for: style)
+                let channel = active
+                    ? (side == .left ? frame.left : frame.right)
+                    : (side == .left || mode == .mono ? Self.previewLeft : Self.previewRight)
+                settings.makeTrail(style: style, frame: frame, channel: channel,
+                                   time: reduceMotion || !active ? 3.4 : frame.animationTime,
+                                   side: side, mirrored: mode == .mono, lowPower: lowPower,
+                                   innerInset: 4, flowFromNotch: settings.flowFromNotch)
+                    .opacity(style == settings.selectedStyle ? 1 : settings.secondOpacity)
+            }
+        }
+    }
+
     var body: some View {
+        let frame = signal(for: settings.selectedStyle)
+        let palette = settings.palette(for: frame)
+        let hasLiveSignal = settings.displayedStyles.contains { hasSignal(signal(for: $0), for: $0) }
         VStack(spacing: 6) {
             HStack {
                 Text(mode == .mono ? "MONO FIELD" : "STEREO FIELD").tracking(1.5)
                 Spacer()
-                Label(hasSignal ? "LIVE" : "PALETTE PREVIEW", systemImage: "circle.fill")
+                Label(hasLiveSignal ? "LIVE" : "PALETTE PREVIEW", systemImage: "circle.fill")
                     .labelStyle(PreviewBadge())
             }
             .font(.system(size: 9, weight: .semibold, design: .monospaced))
             .foregroundStyle(.white.opacity(0.70))
 
-            let time = reduceMotion || !hasSignal ? 3.4 : frame.animationTime
             HStack(spacing: 5) {
-                VisualizerTrail(style: style, flowFromNotch: flowFromNotch, dancersPerSide: dancersPerSide, relaxedDance: relaxedDance, channel: hasSignal ? frame.left : Self.previewLeft, time: time,
-                             palette: palette, side: .left, mirrored: mode == .mono, lowPower: lowPower, glassFade: glassFade, splashDensity: splashDensity, dancerSparks: dancerSparks, dancerThickness: dancerThickness, rainfallFromNotch: rainfallFromNotch, rainfallDensity: rainfallDensity, laserThickness: laserThickness, effectMotion: effectMotion, plasmaSparks: plasmaSparks)
+                previewTrail(on: .left)
                 Capsule()
                     .fill(.black.opacity(0.68))
                     .overlay { Capsule().strokeBorder(.white.opacity(0.13), lineWidth: 1) }
                     .frame(width: 31, height: 12)
-                VisualizerTrail(style: style, flowFromNotch: flowFromNotch, dancersPerSide: dancersPerSide, relaxedDance: relaxedDance, channel: hasSignal ? frame.right : mode == .mono ? Self.previewLeft : Self.previewRight,
-                             time: time, palette: palette, side: .right, mirrored: mode == .mono, lowPower: lowPower, glassFade: glassFade, splashDensity: splashDensity, dancerSparks: dancerSparks, dancerThickness: dancerThickness, rainfallFromNotch: rainfallFromNotch, rainfallDensity: rainfallDensity, laserThickness: laserThickness, effectMotion: effectMotion, plasmaSparks: plasmaSparks)
+                previewTrail(on: .right)
             }
             .frame(height: 43)
             .accessibilityHidden(true)
@@ -80,8 +76,14 @@ struct SignalPreview: View {
                 }
                 .overlay { shape.strokeBorder(.white.opacity(0.14), lineWidth: 1) }
         }
-        .accessibilityLabel(hasSignal ? "Live audio levels" : "Palette preview")
+        .accessibilityLabel(hasLiveSignal ? "Live audio levels" : "Palette preview")
         .accessibilityElement(children: .contain)
+        .onReceive(frames.$current.throttle(for: .milliseconds(50), scheduler: RunLoop.main, latest: true)) {
+            self.frame = $0
+        }
+        .onReceive(equalizerFrames.$current.throttle(for: .milliseconds(50), scheduler: RunLoop.main, latest: true)) {
+            if equalizerFrames !== frames { equalizerFrame = $0 }
+        }
     }
 
     private func meter(_ side: String, value: Float, color: Color) -> some View {
