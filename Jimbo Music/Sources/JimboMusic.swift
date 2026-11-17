@@ -66,10 +66,13 @@ final class MusicModel: ObservableObject {
         didSet { UserDefaults.standard.set(accentHue, forKey: "accentHue") }
     }
     @Published private var coverTint: Color?
-    var artworkTintProvider: ((Data?) -> Color?)?
+    @Published private var coverAccent: Color?
+    var artworkTintProvider: ((Data?) -> (glass: Color, accent: Color)?)?
 
     private func updateArtworkTints(_ bytes: Data?) {
-        coverTint = artworkTintProvider?(bytes)
+        let tints = artworkTintProvider?(bytes)
+        coverTint = tints?.glass
+        coverAccent = tints?.accent
     }
 
     var glassTint: Color {
@@ -98,7 +101,7 @@ final class MusicModel: ObservableObject {
         switch tint {
         case "Auto": return autoAccent ?? Color(red: 0.76, green: 0.63, blue: 1)
         case "Custom": return Color(hue: min(1, max(0, accentHue)), saturation: 0.70, brightness: 1)
-        case "Album cover": return (usesMusicMetadata ? coverTint : autoAccent) ?? Color(red: 0.76, green: 0.63, blue: 1)
+        case "Album cover": return (usesMusicMetadata ? coverAccent : autoAccent) ?? Color(red: 0.76, green: 0.63, blue: 1)
         case "Mint": return Color(red: 0.42, green: 1, blue: 0.75)
         case "Coral": return Color(red: 1, green: 0.48, blue: 0.40)
         case "Ice": return Color(red: 0.55, green: 0.82, blue: 1)

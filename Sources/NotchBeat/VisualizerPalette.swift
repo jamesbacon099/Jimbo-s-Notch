@@ -413,22 +413,13 @@ final class VisualizerSettings: ObservableObject {
 
     func palette(for selection: VisualizerPalette, hue: Double) -> TrailPalette {
         if selection == .albumArt, let artworkColors, let first = artworkColors.classic.first {
-            func visible(_ key: UInt32, floor: Double) -> Color {
-                let r = Double(key >> 16)
-                let g = Double((key >> 8) & 255)
-                let b = Double(key & 255)
-                let peak = max(r, g, b)
-                guard peak > 0 else { return Color(white: floor / 255) }
-                let gain = max(1, floor / peak)
-                return Color(red: r * gain / 255, green: g * gain / 255, blue: b * gain / 255)
-            }
             guard proportionalAlbumColors, !artworkColors.proportional.isEmpty else {
-                return TrailPalette(visible(first, floor: 170),
-                                    visible(artworkColors.classic.dropFirst().first ?? first, floor: 120),
-                                    visible(artworkColors.classic.dropFirst(2).first ?? first, floor: 225))
+                return TrailPalette(AlbumArtwork.displayColor(first, floor: 170),
+                                    AlbumArtwork.displayColor(artworkColors.classic.dropFirst().first ?? first, floor: 120),
+                                    AlbumArtwork.displayColor(artworkColors.classic.dropFirst(2).first ?? first, floor: 225))
             }
             let swatches = artworkColors.proportional
-            let colors = swatches.map { visible($0.rgb, floor: 108) }
+            let colors = swatches.map { AlbumArtwork.displayColor($0.rgb, floor: 108) }
             var stops: [Gradient.Stop] = []
             var position = 0.0
             for (index, swatch) in swatches.enumerated() {

@@ -52,12 +52,10 @@ private final class Studio: ObservableObject {
         island.model.artworkTintProvider = { [weak settings] artwork in
             let colors = artwork.flatMap { AlbumArtwork.colors(from: $0) }
             settings?.setArtworkColors(colors?.palette)
-            func color(_ rgb: UInt32) -> Color {
-                Color(red: Double((rgb >> 16) & 255) / 255,
-                      green: Double((rgb >> 8) & 255) / 255,
-                      blue: Double(rgb & 255) / 255)
-            }
-            return colors?.palette.classic.first.map(color)
+            guard let colors, let dominant = colors.palette.classic.first else { return nil }
+            let artworkTint = AlbumArtwork.displayColor(dominant)
+            let accent = AlbumArtwork.contrastingAccent(dominant: dominant, alternate: colors.brightest)
+            return (glass: artworkTint, accent: accent)
         }
         let frames = audio.frames
         let musicFrames = spectrum.frames

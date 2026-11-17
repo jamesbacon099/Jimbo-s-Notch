@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import ImageIO
+import SwiftUI
 
 enum AlbumArtwork {
     enum Player: String, CaseIterable {
@@ -198,16 +199,55 @@ enum AlbumArtwork {
         let total = dominant.reduce(0) { $0 + $1.count }
         guard total > 0 else { return nil }
         let colors = dominant.map { Swatch(rgb: $0.color, weight: Double($0.count) / Double(total)) }
-        func luminance(_ rgb: UInt32) -> Double {
-            func linear(_ component: UInt32) -> Double {
-                let value = Double(component & 255) / 255
-                return value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
-            }
-            return 0.2126 * linear(rgb >> 16) + 0.7152 * linear(rgb >> 8) + 0.0722 * linear(rgb)
-        }
         let brightest = ranked.lazy.filter { $0.count >= 2 }.map(\.color)
             .filter { luminance($0) >= 0.175 }
             .max { luminance($0) < luminance($1) }
         return (ColorSet(classic: classic, proportional: colors), brightest)
     }
+
+    static func displayColor(_ rgb: UInt32, floor: Double = 0) -> Color {
+        let channels = components(rgb)
+        let peak = channels.max() ?? 0
+        guard peak > 0 else { return Color(white: floor / 255) }
+        let gain = max(1, floor / (peak * 255))
+        return color(channels.map { $0 * gain })
+    }
+
+    static func contrastingAccent(dominant: UInt32, alternate: UInt32?) -> Color {
+        let source = (components(dominant).max() ?? 0) < 0.12 ? alternate : dominant
+        guard let source else { return .white }
+        let channels = components(source)
+        // A 0.30 relative luminance gives 7:1 contrast against black.
+        let target = 0.30
+        if luminance(channels) >= target { return color(channels) }
+        var lower = 0.0
+        var upper = 1.0
+        for _ in 0..<12 {
+            let amount = (lower + upper) / 2
+            if luminance(channels.map { $0 + (1 - $0) * amount }) >= target {
+                upper = amount
+            } else {
+                lower = amount
+            }
+        }
+        return color(channels.map { $0 + (1 - $0) * upper })
+    }
+
+    private static func components(_ rgb: UInt32) -> [Double] {
+        [16, 8, 0].map { Double((rgb >> $0) & 255) / 255 }
+    }
+
+    private static func color(_ channels: [Double]) -> Color {
+        Color(red: channels[0], green: channels[1], blue: channels[2])
+    }
+
+    private static func luminance(_ rgb: UInt32) -> Double {
+        luminance(components(rgb))
+    }
+
+    private static func luminance(_ channels: [Double]) -> Double {
+        let linear = channels.map { $0 <= 0.04045 ? $0 / 12.92 : pow(($0 + 0.055) / 1.055, 2.4) }
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+    }
+
 }
